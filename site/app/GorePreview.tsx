@@ -19,6 +19,7 @@ type GorePreviewProps = {
   goreCount: number;
   hemisphere: Hemisphere;
   showCutLines: boolean;
+  dashCutLines: boolean;
   showFoldLines: boolean;
   showTabs: boolean;
   onRenderingChange?: (rendering: boolean) => void;
@@ -35,6 +36,7 @@ export function GorePreview({
   goreCount,
   hemisphere,
   showCutLines,
+  dashCutLines,
   showFoldLines,
   showTabs,
   onRenderingChange,
@@ -103,7 +105,14 @@ export function GorePreview({
           return (
             <g key={index} transform={`translate(${CENTER} ${CENTER}) rotate(${rotation})`}>
               {showCutLines && (
-                <path d={outline} fill="none" stroke="#173f3a" strokeWidth="1.45" />
+                <path
+                  d={outline}
+                  fill="none"
+                  stroke="#173f3a"
+                  strokeWidth="1.45"
+                  strokeDasharray={dashCutLines ? '6 4' : undefined}
+                  strokeLinecap={dashCutLines ? 'round' : undefined}
+                />
               )}
               {showFoldLines && (
                 <path
@@ -120,6 +129,8 @@ export function GorePreview({
                   fill="#fffaf0"
                   stroke="#173f3a"
                   strokeWidth="1"
+                  strokeDasharray={dashCutLines ? '6 4' : undefined}
+                  strokeLinecap={dashCutLines ? 'round' : undefined}
                 />
               )}
             </g>

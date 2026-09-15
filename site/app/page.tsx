@@ -67,12 +67,14 @@ function TemplatePreview({
   hemisphere,
   goreCount,
   cutLines,
+  dashedCutLines,
   foldLines,
   tabs,
 }: {
   hemisphere: Hemisphere;
   goreCount: number;
   cutLines: boolean;
+  dashedCutLines: boolean;
   foldLines: boolean;
   tabs: boolean;
 }) {
@@ -100,7 +102,14 @@ function TemplatePreview({
 
       {centralMeridians(goreCount).map((centralMeridian, index) => (
         <g key={centralMeridian} transform={`rotate(${180 + (index * 360) / goreCount})`}>
-          <path d={outline} fill="url(#paper)" stroke={cutLines ? '#173f3a' : 'none'} strokeWidth="1.6" />
+          <path
+            d={outline}
+            fill="url(#paper)"
+            stroke={cutLines ? '#173f3a' : 'none'}
+            strokeWidth="1.6"
+            strokeDasharray={dashedCutLines ? '5 4' : undefined}
+            strokeLinecap={dashedCutLines ? 'round' : undefined}
+          />
           <path d={outline} fill="url(#longitude)" />
           {foldLines && (
             <path
@@ -117,6 +126,8 @@ function TemplatePreview({
               fill="#fffaf0"
               stroke="#173f3a"
               strokeWidth="0.8"
+              strokeDasharray={dashedCutLines ? '5 4' : undefined}
+              strokeLinecap={dashedCutLines ? 'round' : undefined}
             />
           )}
           {goreCount <= 8 && (
@@ -143,18 +154,21 @@ function SettingRow({
   id,
   label,
   checked,
+  disabled = false,
   onCheckedChange,
 }: {
   id: string;
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <label htmlFor={id} className="setting-check">
+    <label htmlFor={id} className={`setting-check${disabled ? ' disabled' : ''}`}>
       <Checkbox
         id={id}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={(value) => onCheckedChange(Boolean(value))}
       />
       <span>{label}</span>
@@ -176,6 +190,7 @@ export default function Home() {
   const [goreCount, setGoreCount] = useState(6);
   const [paperSize, setPaperSize] = useState<'letter' | 'a4' | 'tabloid'>('letter');
   const [cutLines, setCutLines] = useState(true);
+  const [dashedCutLines, setDashedCutLines] = useState(false);
   const [foldLines, setFoldLines] = useState(true);
   const [tabs, setTabs] = useState(true);
   const [diameter, setDiameter] = useState(4);
@@ -250,6 +265,7 @@ export default function Home() {
       paperLabel,
       paperSize,
       cutLines,
+      dashedCutLines,
       foldLines,
       tabs,
       logo: logoLayer ? { dataUrl: logoLayer.dataUrl, position: logoPosition, scale: logoScale } : undefined,
@@ -270,7 +286,7 @@ export default function Home() {
         diameter,
         paperLabel,
         paperSize,
-        marks: { cutLines, foldLines, tabs },
+        marks: { cutLines, dashedCutLines, foldLines, tabs },
         logo: logoLayer ? { dataUrl: logoLayer.dataUrl, position: logoPosition, scale: logoScale } : undefined,
       });
     } catch (error) {
@@ -422,6 +438,13 @@ export default function Home() {
               <div><h2>Assembly marks</h2></div>
             </div>
             <SettingRow id="cut-lines" label="Cut lines" checked={cutLines} onCheckedChange={setCutLines} />
+            <SettingRow
+              id="dashed-cut-lines"
+              label="Dashed cut outline"
+              checked={dashedCutLines}
+              disabled={!cutLines}
+              onCheckedChange={setDashedCutLines}
+            />
             <SettingRow id="fold-lines" label="Fold lines" checked={foldLines} onCheckedChange={setFoldLines} />
             <SettingRow id="tabs" label="Glue tabs" checked={tabs} onCheckedChange={setTabs} />
           </section>
@@ -516,6 +539,7 @@ export default function Home() {
                         goreCount={goreCount}
                         hemisphere={hemisphere}
                         showCutLines={cutLines}
+                        dashCutLines={dashedCutLines}
                         showFoldLines={foldLines}
                         showTabs={tabs}
                         onRenderingChange={setIsRendering}
@@ -528,6 +552,7 @@ export default function Home() {
                       hemisphere={hemisphere}
                       goreCount={goreCount}
                       cutLines={cutLines}
+                      dashedCutLines={dashedCutLines}
                       foldLines={foldLines}
                       tabs={tabs}
                     />
@@ -568,7 +593,7 @@ export default function Home() {
 
               <div className="paper-footer">
                 <span>Paper Globe · {goreCount} gores · {diameter}&quot; diameter</span>
-                <span className="legend"><i className="cut" /> cut <i className="fold" /> fold</span>
+                <span className="legend"><i className={`cut${dashedCutLines ? ' dashed' : ''}`} /> cut <i className="fold" /> fold</span>
               </div>
             </div>
           </div>

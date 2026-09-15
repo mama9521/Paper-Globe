@@ -9,6 +9,7 @@ import {
 
 export type TemplateMarks = {
   cutLines: boolean;
+  dashedCutLines: boolean;
   foldLines: boolean;
   tabs: boolean;
 };
@@ -52,14 +53,15 @@ function escapeXml(value: string) {
 function overlayMarkup(goreCount: number, hemisphere: Hemisphere, marks: TemplateMarks) {
   const outline = pointsToSvgPath(lobeOutline(goreCount, hemisphere, RADIUS));
   const tabOutline = pointsToSvgPath(glueTabOutline(goreCount, RADIUS));
+  const cutDash = marks.dashedCutLines ? ' stroke-dasharray="6 4" stroke-linecap="round"' : '';
 
   return centralMeridians(goreCount)
     .map((_, index) => {
       const rotation = 180 + (index * 360) / goreCount;
       return `<g transform="translate(${CENTER} ${CENTER}) rotate(${rotation})">
-        ${marks.cutLines ? `<path d="${outline}" fill="none" stroke="#173f3a" stroke-width="1.45"/>` : ''}
+        ${marks.cutLines ? `<path d="${outline}" fill="none" stroke="#173f3a" stroke-width="1.45"${cutDash}/>` : ''}
         ${marks.foldLines ? `<path d="M 0 2 L 0 ${RADIUS - 2}" fill="none" stroke="#b04a3c" stroke-width="1" stroke-dasharray="5 4"/>` : ''}
-        ${marks.tabs ? `<path d="${tabOutline}" fill="#fffaf0" stroke="#173f3a" stroke-width="1"/>` : ''}
+        ${marks.tabs ? `<path d="${tabOutline}" fill="#fffaf0" stroke="#173f3a" stroke-width="1"${cutDash}/>` : ''}
       </g>`;
     })
     .join('');
@@ -103,7 +105,7 @@ export function createTemplateSvg({
   </g>
   <line x1="48" y1="${page.height - 147}" x2="${page.width - 48}" y2="${page.height - 147}" stroke="#e0dbd0"/>
   <text x="48" y="${page.height - 122}" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Finished globe: ${diameter} in diameter</text>
-  <text x="${page.width - 48}" y="${page.height - 122}" text-anchor="end" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Cut solid · Fold dashed</text>
+  <text x="${page.width - 48}" y="${page.height - 122}" text-anchor="end" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Cut ${marks.dashedCutLines ? 'dashed' : 'solid'} · Fold dashed</text>
   <text x="48" y="${page.height - 48}" fill="#8b8f88" font-family="Arial, sans-serif" font-size="8">Generated locally with Paper Globe</text>
 </svg>`;
 }
