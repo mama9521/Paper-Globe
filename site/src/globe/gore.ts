@@ -52,6 +52,20 @@ export function lobeOutline(
   return points;
 }
 
+export function glueTabOutline(goreCount: number, radius: number): TemplatePoint[] {
+  const goreHalfWidth = (radius * 2) / goreCount;
+  const baseHalfWidth = goreHalfWidth * 0.6;
+  const outerHalfWidth = baseHalfWidth * 0.78;
+  const height = Math.min(radius * 0.14, goreHalfWidth * 0.55);
+
+  return [
+    { x: -baseHalfWidth, y: radius },
+    { x: baseHalfWidth, y: radius },
+    { x: outerHalfWidth, y: radius + height },
+    { x: -outerHalfWidth, y: radius + height },
+  ];
+}
+
 export function pointsToSvgPath(points: TemplatePoint[]) {
   return `${points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)

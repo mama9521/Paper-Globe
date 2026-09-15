@@ -1,5 +1,6 @@
 import {
   centralMeridians,
+  glueTabOutline,
   lobeOutline,
   pointsToSvgPath,
   renderHemisphereGores,
@@ -50,17 +51,15 @@ function escapeXml(value: string) {
 
 function overlayMarkup(goreCount: number, hemisphere: Hemisphere, marks: TemplateMarks) {
   const outline = pointsToSvgPath(lobeOutline(goreCount, hemisphere, RADIUS));
+  const tabOutline = pointsToSvgPath(glueTabOutline(goreCount, RADIUS));
 
   return centralMeridians(goreCount)
     .map((_, index) => {
       const rotation = 180 + (index * 360) / goreCount;
-      const tabWidth = Math.max(9, 17 - goreCount * 0.55);
-      const tabStart = RADIUS * 0.52;
-      const tabEnd = RADIUS * 0.72;
       return `<g transform="translate(${CENTER} ${CENTER}) rotate(${rotation})">
         ${marks.cutLines ? `<path d="${outline}" fill="none" stroke="#173f3a" stroke-width="1.45"/>` : ''}
         ${marks.foldLines ? `<path d="M 0 2 L 0 ${RADIUS - 2}" fill="none" stroke="#b04a3c" stroke-width="1" stroke-dasharray="5 4"/>` : ''}
-        ${marks.tabs ? `<path d="M ${RADIUS * 0.205} ${tabStart} L ${RADIUS * 0.205 + tabWidth} ${tabStart + 6} L ${RADIUS * 0.22 + tabWidth} ${tabEnd - 6} L ${RADIUS * 0.22} ${tabEnd} Z" fill="#fffaf0" stroke="#173f3a" stroke-width="1"/>` : ''}
+        ${marks.tabs ? `<path d="${tabOutline}" fill="#fffaf0" stroke="#173f3a" stroke-width="1"/>` : ''}
       </g>`;
     })
     .join('');

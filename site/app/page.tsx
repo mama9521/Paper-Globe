@@ -30,7 +30,7 @@ import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { GorePreview } from './GorePreview';
 import { createTemplateSvg, downloadSvg, printBothHemispheres } from '@/src/globe/export';
-import { centralMeridians, lobeOutline, pointsToSvgPath } from '@/src/globe/gore';
+import { centralMeridians, glueTabOutline, lobeOutline, pointsToSvgPath } from '@/src/globe/gore';
 
 type PreviewMode = 'map' | 'template' | 'globe';
 type Hemisphere = 'north' | 'south';
@@ -78,6 +78,7 @@ function TemplatePreview({
 }) {
   const radius = 170;
   const outline = pointsToSvgPath(lobeOutline(goreCount, hemisphere, radius));
+  const tabOutline = pointsToSvgPath(glueTabOutline(goreCount, radius));
 
   return (
     <figure className="template-figure">
@@ -112,7 +113,7 @@ function TemplatePreview({
           )}
           {tabs && (
             <path
-              d={`M ${radius * 0.2} ${radius * 0.53} l 11 6 l 4 29 l -11 6 Z`}
+              d={tabOutline}
               fill="#fffaf0"
               stroke="#173f3a"
               strokeWidth="0.8"
