@@ -28,7 +28,7 @@ The primary flow is:
 - Support 4, 6, 8, and 12 gores on US Letter, A4, and Tabloid paper.
 - Export deterministic SVG and a dependable two-page print/PDF layout.
 - Explain invalid input, unsupported configurations, rendering progress, and recovery steps clearly.
-- Deploy through OpenAI Sites using the existing Cloudflare Workers-compatible Vinext build.
+- Deploy publicly from GitHub to Cloudflare Workers using the Vinext build.
 
 ### V1 non-goals
 
@@ -80,8 +80,8 @@ Important limitations of the current prototype:
 ```mermaid
 flowchart LR
   U[User] -->|selects local map and logo| B[Browser application]
-  B -->|loads application code and static assets| H[OpenAI Sites deployment]
-  H --> W[Cloudflare Workers-compatible runtime and edge delivery]
+  B -->|loads application code and static assets| H[Cloudflare Workers deployment]
+  H --> W[Workers runtime and edge delivery]
   B -->|projection request and transferable pixel data| R[Browser render worker]
   R -->|projected raster and progress| B
   B -->|Blob/Object URL| S[SVG download]
@@ -93,13 +93,13 @@ The hosting runtime serves the application shell and its static assets. All user
 
 ### Runtime boundaries
 
-| Boundary | Responsibility | Must not own |
-| --- | --- | --- |
-| Application shell (`site/app/`) | Workflow UI, accessible controls, validation feedback, status, preview selection, and orchestration | Projection formulas, print geometry, persistence, or uploaded-file networking |
-| Domain modules (`site/src/globe/`) | Coordinates, projection, gore geometry, paper layout, render specifications, and export serialization | React state or framework APIs |
-| Render worker (planned) | Raster sampling, cancellation, progress, and high-resolution projected outputs | UI state, downloads, printing, or network calls |
-| Browser platform adapters | Image decode, Canvas/ImageBitmap, Blob/Object URLs, download, and print-window lifecycle | Business rules or projection math |
-| Hosting runtime | Serve versioned application assets and framework responses | Map uploads, render jobs, saved projects, or user identity in V1 |
+| Boundary                           | Responsibility                                                                                        | Must not own                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Application shell (`site/app/`)    | Workflow UI, accessible controls, validation feedback, status, preview selection, and orchestration   | Projection formulas, print geometry, persistence, or uploaded-file networking |
+| Domain modules (`site/src/globe/`) | Coordinates, projection, gore geometry, paper layout, render specifications, and export serialization | React state or framework APIs                                                 |
+| Render worker (planned)            | Raster sampling, cancellation, progress, and high-resolution projected outputs                        | UI state, downloads, printing, or network calls                               |
+| Browser platform adapters          | Image decode, Canvas/ImageBitmap, Blob/Object URLs, download, and print-window lifecycle              | Business rules or projection math                                             |
+| Hosting runtime                    | Serve versioned application assets and framework responses                                            | Map uploads, render jobs, saved projects, or user identity in V1              |
 
 ### Planned source organization
 
@@ -142,16 +142,16 @@ type GlobeSpecification = {
   source: {
     widthPx: number;
     heightPx: number;
-    colorSpace: 'srgb';
+    colorSpace: "srgb";
   };
   projection: {
-    kind: 'spherical-cassini';
+    kind: "spherical-cassini";
     goreCount: 4 | 6 | 8 | 12;
   };
   output: {
     finishedDiameterMm: number;
-    paper: 'letter' | 'a4' | 'tabloid';
-    orientation: 'portrait';
+    paper: "letter" | "a4" | "tabloid";
+    orientation: "portrait";
     rasterDpi: number;
   };
   marks: {
@@ -160,7 +160,7 @@ type GlobeSpecification = {
     glueTabs: boolean;
   };
   logo?: {
-    position: 'north-pole' | 'south-pole' | 'equator';
+    position: "north-pole" | "south-pole" | "equator";
     scale: number;
   };
 };
@@ -238,26 +238,26 @@ Do not add a global state dependency unless state genuinely spans unrelated rout
 
 ### Selected services
 
-| Concern | Selected service | Rationale and boundary |
-| --- | --- | --- |
-| Site lifecycle and deployment | OpenAI Sites | The repository already has a Sites project in `site/.openai/hosting.json`. Sites manages site versions, access policy, deployment, and hosted runtime values. |
-| Application runtime | Cloudflare Workers-compatible output | Vinext and the Cloudflare Vite plugin build the React application to Worker-compatible ESM. The runtime serves the app; it does not process user images. |
-| Static asset delivery | Sites/Cloudflare deployment | Versioned JavaScript, CSS, icons, and the social card are deployed with the application bundle. |
-| Database | None for V1 | `d1` is intentionally `null`; there is no server-side product state. |
-| Object storage | None for V1 | `r2` is intentionally `null`; user files and generated templates are not uploaded. |
-| Authentication | None for V1 product behavior | Deployment access may be owner-only, shared, or public, but the app itself has no accounts. |
-| Analytics and error reporting | Not selected | Any future service must be privacy-reviewed and must not capture image bytes, generated SVG content, filenames, or other user content. |
+| Concern                       | Selected service             | Rationale and boundary                                                                                                                  |
+| ----------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Source and release history    | GitHub                       | The public `mama9521/Paper-Globe` repository is the source of truth for production releases.                                            |
+| Site lifecycle and runtime    | Cloudflare Workers           | Wrangler deploys the Vinext Worker bundle and its versioned static assets. The runtime serves the app; it does not process user images. |
+| Static asset delivery         | Cloudflare Workers Assets    | Versioned JavaScript, CSS, icons, and the social card are deployed with the Worker bundle.                                              |
+| Database                      | None for V1                  | `d1` is intentionally `null`; there is no server-side product state.                                                                    |
+| Object storage                | None for V1                  | `r2` is intentionally `null`; user files and generated templates are not uploaded.                                                      |
+| Authentication                | None for V1 product behavior | The production Worker is public, but the app itself has no accounts.                                                                    |
+| Analytics and error reporting | Not selected                 | Any future service must be privacy-reviewed and must not capture image bytes, generated SVG content, filenames, or other user content.  |
 
 ### Build and deployment topology
 
 - Node.js 22.13 or newer is the supported build environment.
 - npm and the committed `package-lock.json` are the dependency contract.
 - Vinext supplies the Next-compatible React application model.
-- Vite, the OpenAI Sites plugin, and the Cloudflare plugin create the deployable bundle.
-- Wrangler is a local development adapter for the generated Worker configuration, not a separate production hosting target.
-- `.openai/hosting.json` is the source of truth for the Sites project and logical D1/R2 bindings. It must not contain secrets or general environment configuration.
-- Local secrets, if ever introduced, belong in ignored `.env*` files with non-secret names documented in `.env.example`; hosted runtime values are managed through Sites.
-- A production release consists of a successful validation build, an immutable Sites version tied to the validated source, and a deployment of that exact version.
+- Vite and the Cloudflare plugin create the deployable Worker bundle.
+- Wrangler provides local Worker emulation and deploys the generated configuration to Cloudflare.
+- The production application has no D1 or R2 bindings. The legacy `.openai/hosting.json` file is not used by Cloudflare deployments.
+- Local secrets, if ever introduced, belong in ignored `.env*` files with non-secret names documented in `.env.example`; hosted runtime values belong in Cloudflare secrets or bindings.
+- A production release consists of a successful validation build, a commit on GitHub `main`, and the matching immutable Cloudflare Worker version.
 
 ### Environment strategy
 
@@ -267,10 +267,9 @@ If future scope adds server capabilities, establish distinct development and pro
 
 ### Access, domain, and release policy
 
-- Keep preview deployments owner-only while the print model and security gates are incomplete.
-- Before the first broader release, explicitly choose owner-only, shared, or public Sites access; deployment must not change audience implicitly.
-- Confirm whether the existing `chatgpt.site` address is the canonical production URL or whether a custom domain is required.
-- Update `metadataBase`, canonical metadata, Open Graph metadata, and any robots/sitemap policy to match the chosen production URL and audience.
+- The production Worker is public at `https://paper-globe.mtaxmraz.workers.dev`.
+- Keep experimental preview deployments separate from the production Worker.
+- Keep `metadataBase`, canonical metadata, Open Graph metadata, and any robots/sitemap policy aligned with the production URL.
 - Preserve the existing social preview unless branding changes; verify its content and metadata before release.
 - Use versioned deployments so rollback means redeploying the last known-good version, not editing production in place.
 
@@ -289,7 +288,7 @@ npm run build
 
 As test coverage is added, replace the projection-only script with a complete `npm test` entry and keep focused test commands available for development. Formatting should fail on differences in CI rather than silently changing release source.
 
-Release evidence should record the source revision, test/build result, selected access policy, deployed Sites version, smoke-test result, and rollback target. Generated build output, credentials, and deployment archives must remain uncommitted.
+Release evidence should record the source revision, test/build result, deployed Cloudflare Worker version, smoke-test result, and rollback target. Generated build output, credentials, and deployment archives must remain uncommitted. From `site/`, `npm run deploy:cloudflare` builds and deploys the production Worker.
 
 ## Privacy, security, and content safety
 
@@ -386,7 +385,7 @@ Final budgets should be based on measurements from representative desktop and mo
 
 V1 should favor privacy-preserving operational signals over user-level tracking:
 
-- Build and deployment failures are observable through the Sites release process.
+- Build and deployment failures are observable through Wrangler and Cloudflare's Worker deployment history.
 - Client errors are handled locally with actionable messages and stable error categories.
 - If aggregate telemetry is later justified, collect only allow-listed event names, coarse duration buckets, browser capability flags, and anonymous counts after consent and privacy review.
 - Never log filenames, dimensions tied to identity, image data, data URLs, SVG payloads, or free-form error content derived from user files.
@@ -497,9 +496,9 @@ Phases are ordered by dependency, not by calendar date. Each phase should finish
 
 - Add/choose CI and make the full format, lint, test, and build sequence repeatable.
 - Verify production metadata, social preview, canonical URL, access policy, and privacy copy.
-- Build the exact release source, save an immutable Sites version, and deploy that version.
+- Build the exact release source and deploy it as an immutable Cloudflare Worker version.
 - Smoke-test the deployed URL and record the rollback target.
-- Keep the initial deployment owner-only until approval is given for the selected broader access level.
+- Keep experimental preview deployments separate from the public production Worker.
 
 **Exit criteria**
 
@@ -525,20 +524,20 @@ Phases are ordered by dependency, not by calendar date. Each phase should finish
 
 Items marked **blocking** must be resolved before their dependent phase begins.
 
-| Decision | Current recommendation | Status / blocks |
-| --- | --- | --- |
-| Template geometry | Keep the current two radial hemisphere sheets only if physical prototypes confirm seam and pole behavior; otherwise switch to a documented conventional gore layout before hardening exports. | **Blocking Phase 1** |
-| Diameter definition | Define diameter as the assembled globe's outside paper surface diameter; derive template arc length mathematically and document tolerance. | **Blocking Phase 1** |
-| Oversized configurations | Prevent export at a false scale; show maximum diameter for selected paper and offer a compatible paper size. Consider tiling only after V1. | **Blocking Phase 1** |
-| Printable margins | Use conservative configurable safe margins based on paper rather than assuming borderless printing. Final values require physical print tests. | **Blocking Phase 1** |
-| Export DPI | Use a lower preview resolution and default final raster target appropriate for home printing; select the final DPI after memory/performance measurements. | **Blocking Phase 2** |
-| Logo formats | Prefer raster-only logos for V1. Retain SVG only if the implementation sanitizes and rasterizes it before use. | **Blocking Phase 3** |
-| Complete-set download | Keep single-hemisphere SVG plus two-page Print/Save as PDF, or add a ZIP/two-page PDF. Decide based on the expected classroom/maker workflow. | **Blocking Phase 3** |
-| Globe view | Label it as a coverage preview, or implement a real WebGL/Canvas sphere with accessible fallback. Avoid implying geometric validation from the current CSS mock. | **Blocking Phase 4** |
-| Browser limits | Establish maximum input bytes/pixels and maximum export pixels from tests on Safari/iOS and a midrange desktop. | **Blocking Phase 5** |
-| Deployment audience | Owner-only during development; explicitly approve shared or public access for launch. | **Blocking Phase 6** |
-| Production domain | Decide whether the existing `chatgpt.site` URL is canonical or a custom domain is required. | **Blocking Phase 6** |
-| Analytics | Default to none. Add only privacy-preserving aggregate telemetry if post-launch operations demonstrate a need. | Deferred |
+| Decision                 | Current recommendation                                                                                                                                                                        | Status / blocks      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Template geometry        | Keep the current two radial hemisphere sheets only if physical prototypes confirm seam and pole behavior; otherwise switch to a documented conventional gore layout before hardening exports. | **Blocking Phase 1** |
+| Diameter definition      | Define diameter as the assembled globe's outside paper surface diameter; derive template arc length mathematically and document tolerance.                                                    | **Blocking Phase 1** |
+| Oversized configurations | Prevent export at a false scale; show maximum diameter for selected paper and offer a compatible paper size. Consider tiling only after V1.                                                   | **Blocking Phase 1** |
+| Printable margins        | Use conservative configurable safe margins based on paper rather than assuming borderless printing. Final values require physical print tests.                                                | **Blocking Phase 1** |
+| Export DPI               | Use a lower preview resolution and default final raster target appropriate for home printing; select the final DPI after memory/performance measurements.                                     | **Blocking Phase 2** |
+| Logo formats             | Prefer raster-only logos for V1. Retain SVG only if the implementation sanitizes and rasterizes it before use.                                                                                | **Blocking Phase 3** |
+| Complete-set download    | Keep single-hemisphere SVG plus two-page Print/Save as PDF, or add a ZIP/two-page PDF. Decide based on the expected classroom/maker workflow.                                                 | **Blocking Phase 3** |
+| Globe view               | Label it as a coverage preview, or implement a real WebGL/Canvas sphere with accessible fallback. Avoid implying geometric validation from the current CSS mock.                              | **Blocking Phase 4** |
+| Browser limits           | Establish maximum input bytes/pixels and maximum export pixels from tests on Safari/iOS and a midrange desktop.                                                                               | **Blocking Phase 5** |
+| Deployment audience      | Public Cloudflare Worker for production; separate previews during development.                                                                                                                | Resolved             |
+| Production domain        | Use `https://paper-globe.mtaxmraz.workers.dev` as the canonical production URL.                                                                                                               | Resolved             |
+| Analytics                | Default to none. Add only privacy-preserving aggregate telemetry if post-launch operations demonstrate a need.                                                                                | Deferred             |
 
 ## Definition of done for V1
 
@@ -552,7 +551,7 @@ V1 is complete only when all of the following are true:
 - Input validation and logo handling meet the documented security policy.
 - The workflow passes accessibility, responsive, and supported-browser checks.
 - The complete automated test/build gate passes from a clean checkout.
-- Production metadata, access policy, privacy copy, smoke test, and rollback target are verified for the deployed Sites version.
+- Production metadata, public access, privacy copy, smoke test, and rollback target are verified for the deployed Cloudflare Worker version.
 - Known limitations are documented honestly and no placeholder is presented as a finished feature.
 
 ## Development
