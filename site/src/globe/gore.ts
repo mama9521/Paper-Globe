@@ -1,5 +1,10 @@
 import { cassiniForward, cassiniInverse } from './cassini';
-import { angularDistance, geoToPixel } from './coordinates';
+import { angularDistance } from './coordinates';
+import {
+  detectSourceContentBounds,
+  sourceProjectionToPixel,
+  type SourceProjection,
+} from './source-projection';
 
 export type Hemisphere = 'north' | 'south';
 
@@ -10,6 +15,7 @@ export type RenderGoresOptions = {
   size?: number;
   goreCount?: number;
   hemisphere: Hemisphere;
+  sourceProjection?: SourceProjection;
 };
 
 export type TemplatePoint = { x: number; y: number };
@@ -78,14 +84,17 @@ function sampleBilinear(
   height: number,
   x: number,
   y: number,
+  wrapX: boolean,
 ) {
-  const wrappedX = ((x % width) + width) % width;
+  const sampledX = wrapX
+    ? ((x % width) + width) % width
+    : Math.max(0, Math.min(width - 1, x));
   const clampedY = Math.max(0, Math.min(height - 1, y));
-  const x0 = Math.floor(wrappedX);
+  const x0 = Math.floor(sampledX);
   const y0 = Math.floor(clampedY);
-  const x1 = (x0 + 1) % width;
+  const x1 = wrapX ? (x0 + 1) % width : Math.min(x0 + 1, width - 1);
   const y1 = Math.min(y0 + 1, height - 1);
-  const tx = wrappedX - x0;
+  const tx = sampledX - x0;
   const ty = clampedY - y0;
   const result = [0, 0, 0, 0];
 
@@ -107,6 +116,7 @@ export function renderHemisphereGores({
   size = 720,
   goreCount = 6,
   hemisphere,
+  sourceProjection = 'equirectangular',
 }: RenderGoresOptions) {
   const sourceCanvas = document.createElement('canvas');
   sourceCanvas.width = sourceWidth;
@@ -115,6 +125,12 @@ export function renderHemisphereGores({
   if (!sourceContext) throw new Error('Canvas rendering is unavailable.');
   sourceContext.drawImage(source, 0, 0, sourceWidth, sourceHeight);
   const sourcePixels = sourceContext.getImageData(0, 0, sourceWidth, sourceHeight).data;
+  const sourceContentBounds = detectSourceContentBounds(
+    sourcePixels,
+    sourceWidth,
+    sourceHeight,
+    sourceProjection,
+  );
 
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -151,13 +167,22 @@ export function renderHemisphereGores({
         if (sign * geo.latitude < -0.0001) continue;
         if (Math.abs(angularDistance(geo.longitude, centralMeridian)) > halfWidth + 0.001) continue;
 
-        const sourcePoint = geoToPixel(geo.longitude, geo.latitude, sourceWidth, sourceHeight);
+        const sourcePoint = sourceProjectionToPixel(
+          geo.longitude,
+          geo.latitude,
+          sourceWidth,
+          sourceHeight,
+          sourceProjection,
+          sourceContentBounds,
+        );
+        if (!sourcePoint) continue;
         const rgba = sampleBilinear(
           sourcePixels,
           sourceWidth,
           sourceHeight,
           sourcePoint.x,
           sourcePoint.y,
+          sourceProjection === 'equirectangular',
         );
         const outputIndex = (py * size + px) * 4;
         output.data[outputIndex] = rgba[0];

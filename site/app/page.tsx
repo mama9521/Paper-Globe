@@ -31,6 +31,12 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { GorePreview } from './GorePreview';
 import { createTemplateSvg, downloadSvg, printBothHemispheres } from '@/src/globe/export';
 import { centralMeridians, glueTabOutline, lobeOutline, pointsToSvgPath } from '@/src/globe/gore';
+import {
+  SOURCE_PROJECTION_OPTIONS,
+  sourceProjectionHint,
+  sourceProjectionLabel,
+  type SourceProjection,
+} from '@/src/globe/source-projection';
 
 type PreviewMode = 'map' | 'template' | 'globe';
 type Hemisphere = 'north' | 'south';
@@ -184,8 +190,9 @@ export default function Home() {
   const [hemisphere, setHemisphere] = useState<Hemisphere>('north');
   const [sourceMap, setSourceMap] = useState<SourceMap | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [fileMeta, setFileMeta] = useState('PNG, JPEG or WebP · exactly 2:1');
+  const [fileMeta, setFileMeta] = useState('PNG, JPEG or WebP · complete world map');
   const [notice, setNotice] = useState<string | null>(null);
+  const [sourceProjection, setSourceProjection] = useState<SourceProjection>('equirectangular');
   const [isRendering, setIsRendering] = useState(false);
   const [goreCount, setGoreCount] = useState(6);
   const [paperSize, setPaperSize] = useState<'letter' | 'a4' | 'tabloid'>('letter');
@@ -210,12 +217,6 @@ export default function Home() {
     image.onload = () => {
       const ratio = image.width / image.height;
       setFileName(file.name);
-      if (Math.abs(ratio - 2) >= 0.03) {
-        setFileMeta(`${image.width.toLocaleString()} × ${image.height.toLocaleString()} · not 2:1`);
-        setNotice('This image is not 2:1. Crop it to twice as wide as it is tall, then try again.');
-        URL.revokeObjectURL(url);
-        return;
-      }
       if (sourceMap) URL.revokeObjectURL(sourceMap.objectUrl);
       setSourceMap({
         image,
@@ -224,8 +225,14 @@ export default function Home() {
         width: image.width,
         height: image.height,
       });
-      setFileMeta(`${image.width.toLocaleString()} × ${image.height.toLocaleString()} · 2:1 ready`);
-      setNotice(null);
+      setFileMeta(
+        `${image.width.toLocaleString()} × ${image.height.toLocaleString()} · ${ratio.toFixed(2)}:1`,
+      );
+      setNotice(
+        sourceProjection === 'equirectangular' && Math.abs(ratio - 2) >= 0.03
+          ? 'Accepted. Confirm that the entire image still represents 360° × 180°.'
+          : null,
+      );
       setMode('template');
     };
     image.onerror = () => {
@@ -254,7 +261,7 @@ export default function Home() {
 
   const handleExport = () => {
     if (!sourceMap || !canvasRef.current || isRendering) {
-      setNotice('Upload a valid 2:1 map before exporting.');
+      setNotice('Upload a world map before exporting.');
       return;
     }
     const svg = createTemplateSvg({
@@ -276,12 +283,13 @@ export default function Home() {
 
   const handlePrint = () => {
     if (!sourceMap) {
-      setNotice('Upload a valid 2:1 map before printing.');
+      setNotice('Upload a world map before printing.');
       return;
     }
     try {
       printBothHemispheres({
         sourceImage: sourceMap.image,
+        sourceProjection,
         goreCount,
         diameter,
         paperLabel,
@@ -324,7 +332,7 @@ export default function Home() {
                 </DialogDescription>
               </DialogHeader>
               <ol>
-                <li><span>1</span><div><strong>Upload a 2:1 map</strong><p>Use an equirectangular PNG, JPEG or WebP with the equator centered.</p></div></li>
+                <li><span>1</span><div><strong>Upload a world map</strong><p>Choose its flat-map projection so the image can be sampled geographically.</p></div></li>
                 <li><span>2</span><div><strong>Choose the finish</strong><p>Set gore count, paper, and assembly marks while checking each hemisphere.</p></div></li>
                 <li><span>3</span><div><strong>Export and assemble</strong><p>Download each SVG or use Print / PDF for the two-sheet set.</p></div></li>
               </ol>
@@ -344,7 +352,7 @@ export default function Home() {
               <span>01</span>
               <div>
                 <h2>Source map</h2>
-                <p>Equirectangular world image</p>
+                <p>Complete projected world image</p>
               </div>
             </div>
 
@@ -375,6 +383,23 @@ export default function Home() {
             {notice && !sourceMap && (
               <p className="upload-notice" role="alert"><AlertTriangle /> {notice}</p>
             )}
+
+            <div className="field-stack source-projection-field">
+              <label htmlFor="source-projection">Map projection</label>
+              <NativeSelect
+                id="source-projection"
+                value={sourceProjection}
+                className="w-full"
+                onChange={(event) => setSourceProjection(event.target.value as SourceProjection)}
+              >
+                {SOURCE_PROJECTION_OPTIONS.map((projection) => (
+                  <NativeSelectOption key={projection.value} value={projection.value}>
+                    {projection.label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <p className="projection-help">{sourceProjectionHint(sourceProjection)}</p>
+            </div>
           </section>
 
           <section className="control-section">
@@ -536,6 +561,7 @@ export default function Home() {
                       <GorePreview
                         canvasRef={canvasRef}
                         sourceImage={sourceMap.image}
+                        sourceProjection={sourceProjection}
                         goreCount={goreCount}
                         hemisphere={hemisphere}
                         showCutLines={cutLines}
@@ -576,17 +602,25 @@ export default function Home() {
                     <div className="map-empty">
                       <ImagePlus />
                       <strong>Your map will appear here</strong>
-                      <span>Upload a 2:1 image to begin.</span>
+                      <span>Upload a complete world image to begin.</span>
                     </div>
                   )
                 ) : (
                   <div className="globe-placeholder" aria-label="Three dimensional globe preview placeholder">
                     <div
-                      className={`wire-globe ${sourceMap ? 'textured' : ''}`}
-                      style={sourceMap ? { backgroundImage: `url(${sourceMap.objectUrl})` } : undefined}
+                      className={`wire-globe ${sourceMap && sourceProjection === 'equirectangular' ? 'textured' : ''}`}
+                      style={sourceMap && sourceProjection === 'equirectangular'
+                        ? { backgroundImage: `url(${sourceMap.objectUrl})` }
+                        : undefined}
                     />
                     <strong>{sourceMap ? 'Wrapped globe check' : 'Globe preview'}</strong>
-                    <span>{sourceMap ? 'Inspect coverage before printing.' : 'Upload a map to inspect the assembled globe.'}</span>
+                    <span>
+                      {sourceMap
+                        ? sourceProjection === 'equirectangular'
+                          ? 'Inspect coverage before printing.'
+                          : 'Use Template view to inspect the corrected projection.'
+                        : 'Upload a map to inspect the assembled globe.'}
+                    </span>
                   </div>
                 )}
               </div>
@@ -619,9 +653,9 @@ export default function Home() {
               {isRendering ? (
                 <><strong>Projecting.</strong> Sampling the source image locally.</>
               ) : sourceMap ? (
-                <><strong>Projection ready.</strong> {goreCount} Cassini gores on {paperLabel.split(' · ')[0]}.</>
+                <><strong>Projection ready.</strong> {sourceProjectionLabel(sourceProjection)} to {goreCount} Cassini gores.</>
               ) : (
-                <><strong>Ready to customize.</strong> Upload any 2:1 world image.</>
+                <><strong>Ready to customize.</strong> Upload a complete world image.</>
               )}
             </p>
             <Button variant="outline" size="sm" onClick={handlePrint} disabled={!sourceMap || isRendering}>

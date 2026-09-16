@@ -1,6 +1,6 @@
 # Paper Globe
 
-Paper Globe is a browser-based projection workshop that turns a 2:1 equirectangular world image into a printable paper-globe template. Image decoding, map reprojection, preview, layout, and export are intended to happen entirely on the user's device; source maps and logos are not uploaded.
+Paper Globe is a browser-based projection workshop that turns a complete projected world image into a printable paper-globe template. Image decoding, map reprojection, preview, layout, and export are intended to happen entirely on the user's device; source maps and logos are not uploaded.
 
 > **Planning checkpoint:** the repository contains a functional prototype, but it is not yet production-ready. This document is the implementation contract for the next round of work. Code changes should begin only after the decisions in [Open decisions](#open-decisions) are resolved or explicitly deferred.
 
@@ -8,11 +8,11 @@ Paper Globe is a browser-based projection workshop that turns a 2:1 equirectangu
 
 ### Primary user and job
 
-Paper Globe is for educators, designers, makers, and map enthusiasts who have an equirectangular world image and want to turn it into an accurately sized template they can print, cut, fold, and assemble without installing desktop GIS or illustration software.
+Paper Globe is for educators, designers, makers, and map enthusiasts who have a complete world image and want to turn it into an accurately sized template they can print, cut, fold, and assemble without installing desktop GIS or illustration software.
 
 The primary flow is:
 
-1. Select a supported 2:1 source map.
+1. Select a complete world map and identify its source projection.
 2. Confirm that the image is valid and preview the source.
 3. Choose the number of gores, finished globe diameter, paper size, and assembly marks.
 4. Inspect both projected hemispheres and an assembled-globe coverage preview.
@@ -24,7 +24,7 @@ The primary flow is:
 - Produce geometrically correct, print-to-scale north and south hemisphere templates.
 - Keep source maps, optional logos, and generated files local to the browser.
 - Make the complete workflow usable with keyboard, mouse, and touch.
-- Support PNG, JPEG, and WebP equirectangular inputs and a deliberately chosen safe logo policy.
+- Support PNG, JPEG, and WebP inputs in equirectangular, Natural Earth, Robinson, and Web Mercator projections, plus a deliberately chosen safe logo policy.
 - Support 4, 6, 8, and 12 gores on US Letter, A4, and Tabloid paper.
 - Export deterministic SVG and a dependable two-page print/PDF layout.
 - Explain invalid input, unsupported configurations, rendering progress, and recovery steps clearly.
@@ -38,14 +38,15 @@ The primary flow is:
 - Collaboration, comments, sharing of editable projects, or organization workspaces.
 - Native mobile or desktop applications.
 - Professional prepress features such as CMYK conversion, ICC profiles, bleeds, or printer calibration beyond a scale-check marker.
-- Arbitrary map projections or non-equirectangular source imagery.
+- Arbitrary or unidentified projections, regional maps, and perspective globe photographs.
 
 ## Current prototype
 
 The deployable application is in `site/`. The current prototype already:
 
-- validates PNG, JPEG, and WebP images for an approximately 2:1 aspect ratio;
-- performs inverse spherical Cassini reprojection and bilinear raster sampling in the browser;
+- accepts PNG, JPEG, and WebP world images without requiring a fixed aspect ratio;
+- samples equirectangular, Natural Earth, Robinson, and Web Mercator sources into inverse spherical Cassini gores in the browser;
+- detects uniform margins around rounded Natural Earth and Robinson map footprints;
 - renders 4, 6, 8, or 12 radial gores for either hemisphere;
 - separates the raster map from SVG cut, fold, tab, label, and logo layers;
 - exports the active hemisphere as SVG and opens a two-page browser print view;

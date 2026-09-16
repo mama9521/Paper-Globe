@@ -12,10 +12,12 @@ import {
   type Hemisphere,
 } from '@/src/globe/gore';
 import type { LogoSettings } from '@/src/globe/export';
+import type { SourceProjection } from '@/src/globe/source-projection';
 
 type GorePreviewProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   sourceImage: HTMLImageElement;
+  sourceProjection: SourceProjection;
   goreCount: number;
   hemisphere: Hemisphere;
   showCutLines: boolean;
@@ -33,6 +35,7 @@ const RADIUS = SIZE * 0.405;
 export function GorePreview({
   canvasRef,
   sourceImage,
+  sourceProjection,
   goreCount,
   hemisphere,
   showCutLines,
@@ -66,6 +69,7 @@ export function GorePreview({
           size: SIZE,
           goreCount,
           hemisphere,
+          sourceProjection,
         });
         if (!active || !canvasRef.current) return;
         const canvas = canvasRef.current;
@@ -83,7 +87,7 @@ export function GorePreview({
       active = false;
       cancelAnimationFrame(frame);
     };
-  }, [canvasRef, goreCount, hemisphere, onRenderingChange, sourceImage]);
+  }, [canvasRef, goreCount, hemisphere, onRenderingChange, sourceImage, sourceProjection]);
 
   if (renderError) {
     return <p className="render-error">{renderError}</p>;

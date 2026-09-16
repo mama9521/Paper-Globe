@@ -2,7 +2,7 @@
   "name": "paper-globe",
   "version": "0.1.0",
   "private": true,
-  "description": "Turn 2:1 equirectangular maps into printable Cassini paper globe templates.",
+  "description": "Turn projected world maps into printable Cassini paper globe templates.",
   "engines": {
     "node": ">=22.13.0"
   },

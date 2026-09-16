@@ -6,6 +6,7 @@ import {
   renderHemisphereGores,
   type Hemisphere,
 } from './gore';
+import type { SourceProjection } from './source-projection';
 
 export type TemplateMarks = {
   cutLines: boolean;
@@ -122,6 +123,7 @@ export function downloadSvg(svg: string, filename: string) {
 
 export function printBothHemispheres({
   sourceImage,
+  sourceProjection,
   goreCount,
   diameter,
   paperLabel,
@@ -130,6 +132,7 @@ export function printBothHemispheres({
   logo,
 }: {
   sourceImage: HTMLImageElement;
+  sourceProjection: SourceProjection;
   goreCount: number;
   diameter: number;
   paperLabel: string;
@@ -146,6 +149,7 @@ export function printBothHemispheres({
     sourceHeight: sourceImage.naturalHeight,
     goreCount,
     hemisphere: 'north',
+    sourceProjection,
   });
   const south = renderHemisphereGores({
     source: sourceImage,
@@ -153,6 +157,7 @@ export function printBothHemispheres({
     sourceHeight: sourceImage.naturalHeight,
     goreCount,
     hemisphere: 'south',
+    sourceProjection,
   });
   const northSvg = createTemplateSvg({ canvas: north, goreCount, hemisphere: 'north', diameter, paperLabel, paperSize, logo, ...marks });
   const southSvg = createTemplateSvg({ canvas: south, goreCount, hemisphere: 'south', diameter, paperLabel, paperSize, logo, ...marks });
