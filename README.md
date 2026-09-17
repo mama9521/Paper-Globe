@@ -47,10 +47,10 @@ The deployable application is in `site/`. The current prototype already:
 - accepts PNG, JPEG, and WebP world images without requiring a fixed aspect ratio;
 - samples equirectangular, Natural Earth, Robinson, and Web Mercator sources into inverse spherical Cassini gores in the browser;
 - detects uniform margins around rounded Natural Earth and Robinson map footprints;
-- renders 4, 6, 8, or 12 radial gores for either hemisphere;
+- renders 4, 6, 8, or 12 radial gores with the correct opposite winding for north and south;
 - separates the raster map from SVG cut, fold, tab, label, and logo layers;
 - exports the active hemisphere as SVG and opens a two-page browser print view;
-- presents Letter, A4, and Tabloid controls and an optional logo layer; and
+- presents Letter, A4, and Tabloid controls, optional description and custom legend boxes, and an optional logo layer; and
 - provides source-map, template, and visual wrapped-globe views.
 
 Important limitations of the current prototype:
@@ -58,7 +58,7 @@ Important limitations of the current prototype:
 - The diameter control is currently metadata only; it does not determine physical output dimensions.
 - Template art uses a fixed 720-pixel render and fixed page offsets rather than a physical-unit layout engine.
 - Reprojection is a synchronous, per-pixel operation on the main UI thread.
-- Tests cover coordinate and Cassini round trips only; raster output, geometry, export, UI, and print behavior are untested.
+- Tests cover coordinate and Cassini round trips, hemisphere winding, basic tab geometry, and annotation escaping; raster output, UI, and print behavior are untested.
 - The globe view is a visual coverage aid, not a geometrically verified interactive 3D preview.
 - File validation trusts browser-provided MIME information and does not yet enforce size, pixel-count, or SVG-safety limits.
 - Export and print paths duplicate some composition behavior and can drift apart.

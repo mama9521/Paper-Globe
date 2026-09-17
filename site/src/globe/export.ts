@@ -1,5 +1,6 @@
 import {
   centralMeridians,
+  goreRotationDegrees,
   glueTabOutline,
   lobeOutline,
   pointsToSvgPath,
@@ -21,6 +22,11 @@ export type LogoSettings = {
   scale: number;
 };
 
+export type TemplateAnnotations = {
+  description?: string;
+  legend?: string;
+};
+
 type SvgOptions = TemplateMarks & {
   canvas: HTMLCanvasElement;
   goreCount: number;
@@ -29,6 +35,7 @@ type SvgOptions = TemplateMarks & {
   paperLabel: string;
   paperSize: 'letter' | 'a4' | 'tabloid';
   logo?: LogoSettings;
+  annotations?: TemplateAnnotations;
 };
 
 const PAPER = {
@@ -58,7 +65,7 @@ function overlayMarkup(goreCount: number, hemisphere: Hemisphere, marks: Templat
 
   return centralMeridians(goreCount)
     .map((_, index) => {
-      const rotation = 180 + (index * 360) / goreCount;
+      const rotation = goreRotationDegrees(goreCount, hemisphere, index);
       return `<g transform="translate(${CENTER} ${CENTER}) rotate(${rotation})">
         ${marks.cutLines ? `<path d="${outline}" fill="none" stroke="#173f3a" stroke-width="1.45"${cutDash}/>` : ''}
         ${marks.foldLines ? `<path d="M 0 2 L 0 ${RADIUS - 2}" fill="none" stroke="#b04a3c" stroke-width="1" stroke-dasharray="5 4"/>` : ''}
@@ -66,6 +73,64 @@ function overlayMarkup(goreCount: number, hemisphere: Hemisphere, marks: Templat
       </g>`;
     })
     .join('');
+}
+
+function wrapAnnotationText(value: string, maximumCharacters = 48, maximumLines = 3) {
+  const lines: string[] = [];
+  const paragraphs = value.trim().replace(/\r/g, '').split(/\n+/);
+
+  for (const paragraph of paragraphs) {
+    let line = '';
+    for (const word of paragraph.trim().split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length <= maximumCharacters) {
+        line = candidate;
+      } else {
+        if (line) lines.push(line);
+        line = word;
+      }
+      if (lines.length === maximumLines) break;
+    }
+    if (lines.length < maximumLines && line) lines.push(line);
+    if (lines.length === maximumLines) break;
+  }
+
+  if (lines.length === maximumLines && value.trim().length > lines.join(' ').length) {
+    lines[maximumLines - 1] = `${lines[maximumLines - 1].slice(0, maximumCharacters - 1).trimEnd()}…`;
+  }
+  return lines;
+}
+
+function annotationsMarkup(
+  pageWidth: number,
+  pageHeight: number,
+  annotations?: TemplateAnnotations,
+) {
+  const items = [
+    annotations?.description !== undefined
+      ? { title: 'DESCRIPTION', text: annotations.description }
+      : null,
+    annotations?.legend !== undefined
+      ? { title: 'LEGEND', text: annotations.legend }
+      : null,
+  ].filter((item): item is { title: string; text: string } => item !== null);
+  if (items.length === 0) return '';
+
+  const margin = 48;
+  const gap = 14;
+  const top = pageHeight - 201;
+  const height = 48;
+  const width = (pageWidth - margin * 2 - gap * (items.length - 1)) / items.length;
+
+  return items.map((item, index) => {
+    const x = margin + index * (width + gap);
+    const lines = wrapAnnotationText(item.text);
+    return `<g>
+      <rect x="${x}" y="${top}" width="${width}" height="${height}" rx="3" fill="#fffdf8" stroke="#d9d4c9"/>
+      <text x="${x + 9}" y="${top + 13}" fill="#53615b" font-family="Arial, sans-serif" font-size="7" font-weight="700" letter-spacing="0.7">${item.title}</text>
+      <text x="${x + 9}" y="${top + 26}" fill="#707972" font-family="Arial, sans-serif" font-size="7.5">${lines.map((line, lineIndex) => `<tspan x="${x + 9}" dy="${lineIndex === 0 ? 0 : 9}">${escapeXml(line)}</tspan>`).join('')}</text>
+    </g>`;
+  }).join('');
 }
 
 export function createTemplateSvg({
@@ -76,6 +141,7 @@ export function createTemplateSvg({
   paperLabel,
   paperSize,
   logo,
+  annotations,
   ...marks
 }: SvgOptions) {
   const page = PAPER[paperSize];
@@ -104,6 +170,7 @@ export function createTemplateSvg({
     <circle cx="${CENTER}" cy="${CENTER}" r="12" fill="#fffaf0" stroke="#173f3a" stroke-width="1.2"/>
     <text x="${CENTER}" y="${CENTER + 3.5}" text-anchor="middle" fill="#173f3a" font-family="Arial, sans-serif" font-size="9" font-weight="700">${hemisphere === 'north' ? 'N' : 'S'}</text>
   </g>
+  ${annotationsMarkup(page.width, page.height, annotations)}
   <line x1="48" y1="${page.height - 147}" x2="${page.width - 48}" y2="${page.height - 147}" stroke="#e0dbd0"/>
   <text x="48" y="${page.height - 122}" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Finished globe: ${diameter} in diameter</text>
   <text x="${page.width - 48}" y="${page.height - 122}" text-anchor="end" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Cut ${marks.dashedCutLines ? 'dashed' : 'solid'} · Fold dashed</text>
@@ -130,6 +197,7 @@ export function printBothHemispheres({
   paperSize,
   marks,
   logo,
+  annotations,
 }: {
   sourceImage: HTMLImageElement;
   sourceProjection: SourceProjection;
@@ -139,6 +207,7 @@ export function printBothHemispheres({
   paperSize: 'letter' | 'a4' | 'tabloid';
   marks: TemplateMarks;
   logo?: LogoSettings;
+  annotations?: TemplateAnnotations;
 }) {
   const printWindow = window.open('', '_blank');
   if (!printWindow) throw new Error('Allow pop-ups to open the print preview.');
@@ -159,8 +228,8 @@ export function printBothHemispheres({
     hemisphere: 'south',
     sourceProjection,
   });
-  const northSvg = createTemplateSvg({ canvas: north, goreCount, hemisphere: 'north', diameter, paperLabel, paperSize, logo, ...marks });
-  const southSvg = createTemplateSvg({ canvas: south, goreCount, hemisphere: 'south', diameter, paperLabel, paperSize, logo, ...marks });
+  const northSvg = createTemplateSvg({ canvas: north, goreCount, hemisphere: 'north', diameter, paperLabel, paperSize, logo, annotations, ...marks });
+  const southSvg = createTemplateSvg({ canvas: south, goreCount, hemisphere: 'south', diameter, paperLabel, paperSize, logo, annotations, ...marks });
   const northUrl = URL.createObjectURL(new Blob([northSvg], { type: 'image/svg+xml' }));
   const southUrl = URL.createObjectURL(new Blob([southSvg], { type: 'image/svg+xml' }));
 

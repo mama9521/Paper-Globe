@@ -5,6 +5,7 @@ import Image from 'next/image';
 
 import {
   centralMeridians,
+  goreRotationDegrees,
   glueTabOutline,
   lobeOutline,
   pointsToSvgPath,
@@ -104,7 +105,7 @@ export function GorePreview({
       <canvas ref={canvasRef} aria-label={`Projected ${hemisphere} hemisphere map gores`} />
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true" className="template-overlay">
         {centralMeridians(goreCount).map((_, index) => {
-          const rotation = 180 + (index * 360) / goreCount;
+          const rotation = goreRotationDegrees(goreCount, hemisphere, index);
 
           return (
             <g key={index} transform={`translate(${CENTER} ${CENTER}) rotate(${rotation})`}>

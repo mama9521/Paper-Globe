@@ -28,9 +28,16 @@ import {
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { GorePreview } from './GorePreview';
 import { createTemplateSvg, downloadSvg, printBothHemispheres } from '@/src/globe/export';
-import { centralMeridians, glueTabOutline, lobeOutline, pointsToSvgPath } from '@/src/globe/gore';
+import {
+  centralMeridians,
+  goreRotationDegrees,
+  glueTabOutline,
+  lobeOutline,
+  pointsToSvgPath,
+} from '@/src/globe/gore';
 import {
   SOURCE_PROJECTION_OPTIONS,
   sourceProjectionHint,
@@ -107,7 +114,10 @@ function TemplatePreview({
       </defs>
 
       {centralMeridians(goreCount).map((centralMeridian, index) => (
-        <g key={centralMeridian} transform={`rotate(${180 + (index * 360) / goreCount})`}>
+        <g
+          key={centralMeridian}
+          transform={`rotate(${goreRotationDegrees(goreCount, hemisphere, index)})`}
+        >
           <path
             d={outline}
             fill="url(#paper)"
@@ -200,6 +210,10 @@ export default function Home() {
   const [dashedCutLines, setDashedCutLines] = useState(false);
   const [foldLines, setFoldLines] = useState(true);
   const [tabs, setTabs] = useState(true);
+  const [descriptionEnabled, setDescriptionEnabled] = useState(false);
+  const [descriptionText, setDescriptionText] = useState('');
+  const [legendEnabled, setLegendEnabled] = useState(false);
+  const [legendText, setLegendText] = useState('');
   const [diameter, setDiameter] = useState(4);
   const [brandingOpen, setBrandingOpen] = useState(false);
   const [logoLayer, setLogoLayer] = useState<LogoLayer | null>(null);
@@ -275,6 +289,10 @@ export default function Home() {
       dashedCutLines,
       foldLines,
       tabs,
+      annotations: {
+        description: descriptionEnabled ? descriptionText : undefined,
+        legend: legendEnabled ? legendText : undefined,
+      },
       logo: logoLayer ? { dataUrl: logoLayer.dataUrl, position: logoPosition, scale: logoScale } : undefined,
     });
     downloadSvg(svg, `paper-globe-${hemisphere}-${goreCount}-gores.svg`);
@@ -295,6 +313,10 @@ export default function Home() {
         paperLabel,
         paperSize,
         marks: { cutLines, dashedCutLines, foldLines, tabs },
+        annotations: {
+          description: descriptionEnabled ? descriptionText : undefined,
+          legend: legendEnabled ? legendText : undefined,
+        },
         logo: logoLayer ? { dataUrl: logoLayer.dataUrl, position: logoPosition, scale: logoScale } : undefined,
       });
     } catch (error) {
@@ -474,6 +496,52 @@ export default function Home() {
             <SettingRow id="tabs" label="Glue tabs" checked={tabs} onCheckedChange={setTabs} />
           </section>
 
+          <section className="control-section annotation-settings">
+            <div className="section-heading">
+              <span>04</span>
+              <div>
+                <h2>Notes &amp; legend</h2>
+                <p>Optional context for the printed globe</p>
+              </div>
+            </div>
+            <SettingRow
+              id="description-box"
+              label="Description box"
+              checked={descriptionEnabled}
+              onCheckedChange={setDescriptionEnabled}
+            />
+            {descriptionEnabled && (
+              <div className="annotation-field">
+                <label htmlFor="description-text">Globe description</label>
+                <Textarea
+                  id="description-text"
+                  maxLength={240}
+                  placeholder="What does this globe show?"
+                  value={descriptionText}
+                  onChange={(event) => setDescriptionText(event.target.value)}
+                />
+              </div>
+            )}
+            <SettingRow
+              id="custom-legend"
+              label="Custom legend"
+              checked={legendEnabled}
+              onCheckedChange={setLegendEnabled}
+            />
+            {legendEnabled && (
+              <div className="annotation-field">
+                <label htmlFor="legend-text">Legend entries</label>
+                <Textarea
+                  id="legend-text"
+                  maxLength={180}
+                  placeholder={'Blue = ocean\nGreen = forest'}
+                  value={legendText}
+                  onChange={(event) => setLegendText(event.target.value)}
+                />
+              </div>
+            )}
+          </section>
+
           <div className="branding-control">
             <button
               type="button"
@@ -624,6 +692,23 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {mode === 'template' && (descriptionEnabled || legendEnabled) && (
+                <div className={`paper-annotations${descriptionEnabled && legendEnabled ? '' : ' single'}`}>
+                  {descriptionEnabled && (
+                    <section className="paper-annotation-box">
+                      <strong>Description</strong>
+                      <p>{descriptionText || 'Your description will appear here.'}</p>
+                    </section>
+                  )}
+                  {legendEnabled && (
+                    <section className="paper-annotation-box">
+                      <strong>Legend</strong>
+                      <p>{legendText || 'Your legend will appear here.'}</p>
+                    </section>
+                  )}
+                </div>
+              )}
 
               <div className="paper-footer">
                 <span>Paper Globe · {goreCount} gores · {diameter}&quot; diameter</span>

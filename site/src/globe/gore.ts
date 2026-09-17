@@ -27,6 +27,18 @@ export function centralMeridians(goreCount: number) {
   return Array.from({ length: goreCount }, (_, index) => -180 + index * width);
 }
 
+export function hemisphereLayoutDirection(hemisphere: Hemisphere) {
+  return hemisphere === 'north' ? -1 : 1;
+}
+
+export function goreRotationDegrees(
+  goreCount: number,
+  hemisphere: Hemisphere,
+  goreIndex: number,
+) {
+  return 180 + hemisphereLayoutDirection(hemisphere) * (goreIndex * 360) / goreCount;
+}
+
 export function lobeOutline(
   goreCount: number,
   hemisphere: Hemisphere,
@@ -143,9 +155,10 @@ export function renderHemisphereGores({
   const radius = size * 0.405;
   const halfWidth = 180 / goreCount;
   const sign = hemisphere === 'north' ? 1 : -1;
+  const layoutDirection = hemisphereLayoutDirection(hemisphere);
 
   centralMeridians(goreCount).forEach((centralMeridian, goreIndex) => {
-    const angle = -Math.PI / 2 + (goreIndex * TAU) / goreCount;
+    const angle = -Math.PI / 2 + layoutDirection * (goreIndex * TAU) / goreCount;
     const axisX = Math.cos(angle);
     const axisY = Math.sin(angle);
     const perpX = -axisY;
@@ -159,7 +172,7 @@ export function renderHemisphereGores({
         const radial = vx * axisX + vy * axisY;
         if (radial < 0 || radial > radius) continue;
 
-        const lateral = vx * perpX + vy * perpY;
+        const lateral = layoutDirection * (vx * perpX + vy * perpY);
         const projectedX = (lateral / radius) * (Math.PI / 2);
         const projectedY = sign * (Math.PI / 2 - (radial / radius) * (Math.PI / 2));
         const geo = cassiniInverse(projectedX, projectedY, centralMeridian);

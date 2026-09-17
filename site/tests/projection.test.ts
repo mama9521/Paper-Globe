@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 
 import { cassiniForward, cassiniInverse } from '../src/globe/cassini';
 import { angularDistance, geoToPixel, pixelToGeo } from '../src/globe/coordinates';
-import { glueTabOutline } from '../src/globe/gore';
+import { createTemplateSvg } from '../src/globe/export';
+import {
+  glueTabOutline,
+  goreRotationDegrees,
+  hemisphereLayoutDirection,
+} from '../src/globe/gore';
 import {
   detectSourceContentBounds,
   sourceProjectionLimits,
@@ -42,6 +47,38 @@ for (const goreCount of [4, 6, 8, 12]) {
   assert.ok(tab[2].y > tab[0].y, 'tab should extend beyond the gore edge');
   assert.ok(Math.abs(tab[2].x) < Math.abs(tab[1].x), 'tab should taper evenly');
 }
+
+assert.equal(hemisphereLayoutDirection('north'), -1);
+assert.equal(hemisphereLayoutDirection('south'), 1);
+assert.deepEqual(
+  Array.from({ length: 6 }, (_, index) => goreRotationDegrees(6, 'north', index)),
+  [180, 120, 60, 0, -60, -120],
+);
+assert.deepEqual(
+  Array.from({ length: 6 }, (_, index) => goreRotationDegrees(6, 'south', index)),
+  [180, 240, 300, 360, 420, 480],
+);
+
+const annotatedSvg = createTemplateSvg({
+  canvas: { toDataURL: () => 'data:image/png;base64,test' } as HTMLCanvasElement,
+  goreCount: 6,
+  hemisphere: 'north',
+  diameter: 4,
+  paperLabel: 'US Letter',
+  paperSize: 'letter',
+  cutLines: true,
+  dashedCutLines: false,
+  foldLines: true,
+  tabs: true,
+  annotations: {
+    description: 'A globe about forests & water',
+    legend: 'Green = forest\nBlue = water',
+  },
+});
+assert.match(annotatedSvg, /DESCRIPTION/);
+assert.match(annotatedSvg, /LEGEND/);
+assert.match(annotatedSvg, /forests &amp; water/);
+assert.doesNotMatch(annotatedSvg, /forests & water/);
 
 const arbitraryEquirectangularCenter = sourceProjectionToPixel(
   0,
@@ -102,4 +139,4 @@ const detectedBounds = detectSourceContentBounds(
 );
 assert.deepEqual(detectedBounds, { left: 5, top: 1, width: 90, height: 48 });
 
-console.log('Projection and glue-tab geometry tests passed.');
+console.log('Projection, hemisphere, and export geometry tests passed.');
