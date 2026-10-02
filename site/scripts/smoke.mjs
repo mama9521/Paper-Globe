@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+const base = process.argv[2]; const expected = process.argv[3];
+if (!base || !/^[a-f0-9]{40}$/.test(expected ?? '')) throw new Error('Usage: npm run smoke -- https://your-worker.example <40-character-source-SHA>');
+const url = new URL(base);
+if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Use an HTTP(S) site URL.');
+const response = await fetch(new URL(`build.json?revision=${expected}`, url), { cache: 'no-store' });
+assert.ok(response.ok, `Build manifest returned ${response.status}`);
+const manifest = await response.json(); assert.equal(manifest.commit, expected, 'Deployed revision does not match'); assert.equal(manifest.dirty, false, 'Dirty checkout was deployed');
+const page = await fetch(url); assert.ok(page.ok); const html = await page.text(); assert.match(html, /Paper Globe/);
+const assets = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))(?:\?[^" ]*)?"/g)].map((match) => new URL(match[1], url)).filter((asset) => asset.origin === url.origin);
+assert.ok(assets.length, 'No application assets found');
+for (const asset of assets.slice(0, 20)) assert.ok((await fetch(asset)).ok, `Asset failed: ${asset.pathname}`);
+console.log(`PASS: source ${expected}, page response, and ${Math.min(assets.length, 20)} application assets. Run test:workflow against this URL to verify projection/export.`);

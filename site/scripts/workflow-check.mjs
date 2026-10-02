@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { openChrome } from './chrome.mjs';
+const browser = await openChrome(process.argv[2] ?? 'http://127.0.0.1:4173');
+const clickText = async (text) => {
+  await browser.until(`(()=>{const e=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});return e&&!e.disabled})()`);
+  return browser.evaluate(`(()=>{const element=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!element)throw new Error('Missing button '+${JSON.stringify(text)});element.click()})()`);
+};
+const setInput = (id, value) => browser.evaluate(`(()=>{const element=document.getElementById(${JSON.stringify(id)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(element,${JSON.stringify(String(value))});element.dispatchEvent(new Event('input',{bubbles:true}));element.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+const setSelect = (id, value) => browser.evaluate(`(()=>{const element=document.getElementById(${JSON.stringify(id)});element.value=${JSON.stringify(value)};element.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+const ready = (sheet = 1) => browser.until(`document.querySelector('.render-status')?.textContent.includes('Sheet ${sheet} of 2 ready.')`);
+try {
+  await browser.until(`(()=>{const input=document.querySelector('input[aria-label="Choose world map file"]');return input&&Object.keys(input).some(key=>key.startsWith('__reactProps'))})()`);
+  await browser.evaluate(`window.__downloads=[];const nativeClick=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.download.endsWith('.svg')){const name=this.download;void fetch(this.href).then(r=>r.text()).then(svg=>window.__downloads.push({name,svg}));}else nativeClick.call(this)};window.__choose=async(label,bad=false)=>{const canvas=document.createElement('canvas');canvas.width=128;canvas.height=64;const ctx=canvas.getContext('2d');ctx.fillStyle='red';ctx.fillRect(0,0,128,64);const blob=bad?new Blob(['invalid'],{type:'image/png'}):await new Promise(r=>canvas.toBlob(r,'image/png'));const file=new File([blob],bad?'bad.png':'fixture.png',{type:'image/png'});const transfer=new DataTransfer();transfer.items.add(file);const input=document.querySelector('input[aria-label="'+label+'"]');input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}))};window.__choose('Choose world map file');`);
+  await ready();
+  for (const [index, mode] of ['Map', 'Globe'].entries()) {
+    await clickText(mode); await clickText('Export SVG');
+    await browser.until(`window.__downloads.length===${index + 1}`);
+  }
+  console.log('PASS: SVG export in Map and Globe views (#4)');
+  await browser.evaluate(`window.__choose('Choose world map file',true)`);
+  await browser.until(`document.querySelector('.operation-notice.error')?.textContent.includes('Choose a still')`);
+  assert.ok(await browser.evaluate(`document.querySelector('.upload-copy strong').textContent.includes('fixture.png')`));
+  console.log('PASS: invalid replacement feedback preserves source (#3, #9)');
+  await browser.evaluate(`window.__open=window.open;window.open=()=>null`); await clickText('Print / PDF');
+  await browser.until(`document.querySelector('.operation-notice.error')?.textContent.includes('Allow pop-ups')`);
+  await browser.evaluate(`window.open=window.__open`);
+  console.log('PASS: visible popup recovery (#3)');
+  await setInput('diameter', 8);
+  await browser.until(`document.querySelector('.input-warning')?.textContent.includes('will not fit')`);
+  assert.ok(await browser.evaluate(`[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Export SVG').disabled`));
+  await setInput('diameter', 3.5); await ready();
+  console.log('PASS: actual-size fit validation (#1)');
+  await browser.evaluate(`document.getElementById('cutLines').click()`); await clickText('Export SVG');
+  await browser.until('window.__downloads.length===3');
+  assert.doesNotMatch(await browser.evaluate('window.__downloads[2].svg'), /data-layer="cut"/);
+  console.log('PASS: cut visibility includes tabs (#2)');
+  await browser.evaluate(`document.querySelector('[aria-controls="branding-fields"]').click()`);
+  await browser.until(`!!document.querySelector('input[aria-label="Choose logo file"]')`);
+  await browser.evaluate(`window.__choose('Choose logo file')`);
+  await browser.until(`document.querySelector('.operation-notice')?.textContent.includes('Logo added')`);
+  await setSelect('logo-position', 'north-pole'); await setInput('logo-size', 0.5);
+  await clickText('Export SVG'); await browser.until('window.__downloads.length===4');
+  const branded = await browser.evaluate('window.__downloads[3].svg'); assert.match(branded, /data-layer="logo"/); assert.doesNotMatch(branded, /<circle/);
+  console.log('PASS: pole-logo scene layering (#7)');
+  await browser.evaluate(`const native=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(...args){HTMLCanvasElement.prototype.getContext=native;return null};`);
+  await clickText('South');
+  await browser.until(`document.querySelector('.render-status')?.textContent.includes('Canvas rendering is unavailable')`);
+  await clickText('Retry projection'); await ready(2);
+  assert.ok(await browser.evaluate(`!document.querySelector('.operation-notice.error')`), 'A stale failure notice survived retry');
+  assert.ok(await browser.evaluate(`[...document.querySelectorAll('.hemisphere-switch button')].find(e=>e.textContent==='South').getAttribute('aria-pressed')==='true'`));
+  await browser.evaluate(`document.querySelector('[aria-label="Reset view"]').click()`); await ready(1);
+  assert.ok(await browser.evaluate(`document.querySelector('.canonical-preview img')?.alt.includes('sheet 1 of 2')`));
+  console.log('PASS: render error/retry, selected hemisphere, sheet number, and non-destructive reset (#8, #12)');
+  await browser.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  assert.ok(await browser.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Mobile page overflows horizontally');
+  console.log('PASS: narrow viewport smoke check');
+} finally { await browser.close(); }

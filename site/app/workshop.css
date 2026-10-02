@@ -1,0 +1,32 @@
+.workshop-controls { min-width: 0; margin: 0; padding: 0; border: 0; }
+.workshop-controls:disabled { opacity: .65; }
+.workshop-controls input[type='range'] { width: 100%; accent-color: #b04a3c; }
+.workshop-controls input[type='checkbox'] { width: 16px; height: 16px; accent-color: #173f3a; }
+.workshop-controls select { width: 100%; padding: 6px; border: 1px solid #b5bdb7; }
+.feedback-region:empty { display: none; }
+.operation-notice { display: flex; align-items: center; gap: 9px; margin: 0; padding: 12px 24px; font-size: 13px; background: #e5f0e7; color: #173f3a; }
+.operation-notice.error, .input-warning { background: #fff0e8; color: #783226; }
+.operation-notice svg { width: 18px; height: 18px; flex-shrink: 0; }
+.input-warning { display: block; padding: 10px; font-size: 12px; line-height: 1.5; border-radius: 5px; }
+.canonical-preview { width: min(100%, 650px); margin: 0; background: #fffdf8; box-shadow: 0 16px 40px #22342c26; }
+.canonical-preview img { display: block; width: 100%; height: auto; }
+.canonical-preview img[hidden] { display: none; }
+.canonical-preview p { padding: 36px; }
+.render-status { display: block; font-size: 11px; line-height: 1.4; }
+fieldset.hemisphere-switch { margin: 0; padding: 0; border: 0; min-width: 0; }
+.preview-footer { min-height: 58px; height: auto; flex-wrap: wrap; padding-block: 10px; }
+.preview-panel { grid-template-rows: 58px minmax(0, 1fr) auto; }
+.globe-placeholder span { max-width: 330px; line-height: 1.5; }
+.workshop-controls textarea { width: 100%; min-height: 75px; padding: 8px; border: 1px solid #b5bdb7; border-radius: 5px; }
+.workshop-controls :focus-visible { outline: 2px solid #173f3a; outline-offset: 3px; }
+@media (max-width: 760px) {
+  .workspace { display: block; }
+  .control-panel { border-right: 0; }
+  .canvas-wrap { min-height: 340px; padding: 14px; }
+  .preview-toolbar, .preview-footer { padding-inline: 14px; }
+  .topbar { flex-wrap: wrap; height: auto; gap: 10px; padding: 14px; }
+  .topbar-note { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *, .app-shell *::before, .app-shell *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
