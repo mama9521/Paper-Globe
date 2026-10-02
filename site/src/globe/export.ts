@@ -1,256 +1,163 @@
-import {
-  centralMeridians,
-  goreRotationDegrees,
-  glueTabOutline,
-  lobeOutline,
-  pointsToSvgPath,
-  renderHemisphereGores,
-  type Hemisphere,
-} from './gore';
-import type { SourceProjection } from './source-projection';
+import { centralMeridians, cutOutline, glueTabOutline, goreRotationDegrees, pointsToSvgPath, type Hemisphere } from './geometry';
+import { MARGIN_MM, PAPER, paperLayout, type PaperSize } from './paper';
+import { abortError, throwIfAborted } from './lifecycle';
+import type { PixelImage } from './raster';
 
-export type TemplateMarks = {
-  cutLines: boolean;
-  dashedCutLines: boolean;
-  foldLines: boolean;
-  tabs: boolean;
+export type TemplateMarks = { cutLines: boolean; dashedCutLines: boolean; foldLines: boolean; tabs: boolean };
+export type LogoSettings = { dataUrl: string; position: 'north-pole' | 'south-pole' | 'equator'; scale: number };
+export type TemplateAnnotations = { description?: string; legend?: string };
+export type SvgOptions = TemplateMarks & {
+  raster?: string; goreCount: number; hemisphere: Hemisphere; diameter: number;
+  paperSize: PaperSize; logo?: LogoSettings; annotations?: TemplateAnnotations;
 };
-
-export type LogoSettings = {
-  dataUrl: string;
-  position: 'north-pole' | 'south-pole' | 'equator';
-  scale: number;
-};
-
-export type TemplateAnnotations = {
-  description?: string;
-  legend?: string;
-};
-
-type SvgOptions = TemplateMarks & {
-  canvas: HTMLCanvasElement;
-  goreCount: number;
-  hemisphere: Hemisphere;
-  diameter: number;
-  paperLabel: string;
-  paperSize: 'letter' | 'a4' | 'tabloid';
-  logo?: LogoSettings;
-  annotations?: TemplateAnnotations;
-};
-
-const PAPER = {
-  letter: { width: 816, height: 1056, css: 'letter' },
-  a4: { width: 794, height: 1123, css: 'A4' },
-  tabloid: { width: 1056, height: 1632, css: 'tabloid' },
-} as const;
-const ART_SIZE = 720;
-const ART_OFFSET_Y = 126;
-const CENTER = ART_SIZE / 2;
-const RADIUS = ART_SIZE * 0.405;
-
-function escapeXml(value: string) {
-  return value.replace(/[<>&'"]/g, (character) => ({
-    '<': '&lt;',
-    '>': '&gt;',
-    '&': '&amp;',
-    "'": '&apos;',
-    '"': '&quot;',
-  })[character] ?? character);
+export function escapeXml(value: string) {
+  return value.replace(/[<>&'"]/g, (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[character] ?? character);
 }
-
-function overlayMarkup(goreCount: number, hemisphere: Hemisphere, marks: TemplateMarks) {
-  const outline = pointsToSvgPath(lobeOutline(goreCount, hemisphere, RADIUS));
-  const tabOutline = pointsToSvgPath(glueTabOutline(goreCount, RADIUS));
-  const cutDash = marks.dashedCutLines ? ' stroke-dasharray="6 4" stroke-linecap="round"' : '';
-
-  return centralMeridians(goreCount)
-    .map((_, index) => {
-      const rotation = goreRotationDegrees(goreCount, hemisphere, index);
-      return `<g transform="translate(${CENTER} ${CENTER}) rotate(${rotation})">
-        ${marks.cutLines ? `<path d="${outline}" fill="none" stroke="#173f3a" stroke-width="1.45"${cutDash}/>` : ''}
-        ${marks.foldLines ? `<path d="M 0 2 L 0 ${RADIUS - 2}" fill="none" stroke="#b04a3c" stroke-width="1" stroke-dasharray="5 4"/>` : ''}
-        ${marks.tabs ? `<path d="${tabOutline}" fill="#fffaf0" stroke="#173f3a" stroke-width="1"${cutDash}/>` : ''}
-      </g>`;
-    })
-    .join('');
+function png(value: string) {
+  if (!/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(value)) throw new Error('Only locally rasterized PNG data may be embedded in a template.');
+  return value;
 }
-
-function wrapAnnotationText(value: string, maximumCharacters = 48, maximumLines = 3) {
+export function wrapText(value: string, width: number, limit = 6) {
+  const maximum = Math.max(8, Math.floor(width / 1.5));
   const lines: string[] = [];
-  const paragraphs = value.trim().replace(/\r/g, '').split(/\n+/);
-
-  for (const paragraph of paragraphs) {
+  for (const paragraph of value.replace(/\r/g, '').split('\n')) {
     let line = '';
-    for (const word of paragraph.trim().split(/\s+/).filter(Boolean)) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (candidate.length <= maximumCharacters) {
-        line = candidate;
-      } else {
-        if (line) lines.push(line);
-        line = word;
-      }
-      if (lines.length === maximumLines) break;
+    for (const original of paragraph.trim().split(/\s+/).filter(Boolean)) {
+      let word = original;
+      if (line && line.length + 1 + word.length > maximum) { lines.push(line); line = ''; }
+      while (word.length > maximum) { lines.push(word.slice(0, maximum)); word = word.slice(maximum); }
+      line = line ? `${line} ${word}` : word;
     }
-    if (lines.length < maximumLines && line) lines.push(line);
-    if (lines.length === maximumLines) break;
+    lines.push(line);
   }
-
-  if (lines.length === maximumLines && value.trim().length > lines.join(' ').length) {
-    lines[maximumLines - 1] = `${lines[maximumLines - 1].slice(0, maximumCharacters - 1).trimEnd()}…`;
-  }
+  if (lines.length > limit) return [...lines.slice(0, limit - 1), `${lines[limit - 1].slice(0, maximum - 1)}…`];
   return lines;
 }
-
-function annotationsMarkup(
-  pageWidth: number,
-  pageHeight: number,
-  annotations?: TemplateAnnotations,
-) {
+/** The one physical scene used by screen preview, downloaded SVG, and both print pages. */
+export function createTemplateSvg(options: SvgOptions) {
+  const { goreCount, hemisphere, diameter, paperSize, raster, logo, annotations, ...marks } = options;
+  const layout = paperLayout(diameter, paperSize);
+  const { widthMm: width, heightMm: height, radiusMm: radius, artMm: art } = layout;
+  if (hemisphere !== 'north' && hemisphere !== 'south') throw new Error('Invalid hemisphere.');
+  if (logo && (!Number.isFinite(logo.scale) || logo.scale < 0.5 || logo.scale > 2 || !['north-pole', 'south-pole', 'equator'].includes(logo.position))) throw new Error('Invalid logo placement or scale.');
+  const center = art / 2;
+  const outline = pointsToSvgPath(cutOutline(goreCount, hemisphere, radius, marks.tabs));
+  const tab = glueTabOutline(goreCount, radius);
+  const dash = marks.dashedCutLines ? ' stroke-dasharray="1.6 1.1"' : '';
+  const overlay = centralMeridians(goreCount).map((_, index) => `<g transform="translate(${center} ${center}) rotate(${goreRotationDegrees(goreCount, hemisphere, index)})">
+    ${marks.tabs ? `<path data-layer="tab-fill" d="${pointsToSvgPath(tab)}" fill="#fffaf0" stroke="none"/>` : ''}
+    ${marks.cutLines ? `<path data-layer="cut" d="${outline}" fill="none" stroke="#173f3a" stroke-width="0.25"${dash}/>` : ''}
+    ${marks.foldLines ? `<path data-layer="fold" d="M 0 0.6 L 0 ${radius - 0.6}" fill="none" stroke="#b04a3c" stroke-width="0.18" stroke-dasharray="1.2 1"/>` : ''}
+    ${marks.foldLines && marks.tabs ? `<path data-layer="tab-fold" d="${pointsToSvgPath(tab.slice(0, 2), false)}" fill="none" stroke="#b04a3c" stroke-width="0.18" stroke-dasharray="1.2 1"/>` : ''}
+  </g>`).join('');
+  const visible = logo && (logo.position === 'equator' || logo.position === `${hemisphere}-pole`);
+  const logoSize = logo ? art * 0.075 * logo.scale : 0;
+  const logoY = logo?.position === 'equator' ? center + radius * 0.68 - logoSize / 2 : center - logoSize / 2;
   const items = [
-    annotations?.description !== undefined
-      ? { title: 'DESCRIPTION', text: annotations.description }
-      : null,
-    annotations?.legend !== undefined
-      ? { title: 'LEGEND', text: annotations.legend }
-      : null,
-  ].filter((item): item is { title: string; text: string } => item !== null);
-  if (items.length === 0) return '';
-
-  const margin = 48;
-  const gap = 14;
-  const top = pageHeight - 201;
-  const height = 48;
-  const width = (pageWidth - margin * 2 - gap * (items.length - 1)) / items.length;
-
-  return items.map((item, index) => {
-    const x = margin + index * (width + gap);
-    const lines = wrapAnnotationText(item.text);
-    return `<g>
-      <rect x="${x}" y="${top}" width="${width}" height="${height}" rx="3" fill="#fffdf8" stroke="#d9d4c9"/>
-      <text x="${x + 9}" y="${top + 13}" fill="#53615b" font-family="Arial, sans-serif" font-size="7" font-weight="700" letter-spacing="0.7">${item.title}</text>
-      <text x="${x + 9}" y="${top + 26}" fill="#707972" font-family="Arial, sans-serif" font-size="7.5">${lines.map((line, lineIndex) => `<tspan x="${x + 9}" dy="${lineIndex === 0 ? 0 : 9}">${escapeXml(line)}</tspan>`).join('')}</text>
-    </g>`;
+    annotations?.description !== undefined ? { title: 'DESCRIPTION', value: annotations.description.slice(0, 240) } : null,
+    annotations?.legend !== undefined ? { title: 'LEGEND', value: annotations.legend.slice(0, 180) } : null,
+  ].filter((item): item is { title: string; value: string } => item !== null);
+  const boxWidth = (width - 2 * MARGIN_MM - Math.max(0, items.length - 1) * 4) / Math.max(1, items.length);
+  const notes = items.map((item, index) => {
+    const x = MARGIN_MM + index * (boxWidth + 4); const y = height - MARGIN_MM - 44;
+    return `<g><rect x="${x}" y="${y}" width="${boxWidth}" height="25" fill="#fffdf8" stroke="#d9d4c9" stroke-width="0.2"/>
+      <text x="${x + 2}" y="${y + 4}" font-size="2.3" font-weight="bold">${item.title}</text>
+      <text font-size="2.5">${wrapText(item.value, boxWidth - 4).map((line, i) => `<tspan x="${x + 2}" y="${y + 8 + i * 3}">${escapeXml(line)}</tspan>`).join('')}</text></g>`;
   }).join('');
-}
-
-export function createTemplateSvg({
-  canvas,
-  goreCount,
-  hemisphere,
-  diameter,
-  paperLabel,
-  paperSize,
-  logo,
-  annotations,
-  ...marks
-}: SvgOptions) {
-  const page = PAPER[paperSize];
-  const artOffsetX = (page.width - ART_SIZE) / 2;
-  const raster = canvas.toDataURL('image/png');
-  const hemisphereLabel = hemisphere === 'north' ? 'Northern' : 'Southern';
-  const logoVisible = logo && (
-    logo.position === 'equator'
-    || (logo.position === 'north-pole' && hemisphere === 'north')
-    || (logo.position === 'south-pole' && hemisphere === 'south')
-  );
-  const logoSize = logo ? 54 * logo.scale : 0;
-  const logoX = CENTER - logoSize / 2;
-  const logoY = logo?.position === 'equator' ? CENTER + RADIUS * 0.68 - logoSize / 2 : CENTER - logoSize / 2;
-
+  const name = hemisphere === 'north' ? 'Northern' : 'Southern';
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${page.width / 96}in" height="${page.height / 96}in" viewBox="0 0 ${page.width} ${page.height}">
-  <rect width="${page.width}" height="${page.height}" fill="#fffdf8"/>
-  <text x="48" y="54" fill="#173f3a" font-family="Arial, sans-serif" font-size="18" font-weight="700">PAPER GLOBE</text>
-  <text x="48" y="74" fill="#6b746e" font-family="Arial, sans-serif" font-size="9" letter-spacing="1.1">${hemisphereLabel.toUpperCase()} HEMISPHERE · ${goreCount} GORES</text>
-  <text x="${page.width - 48}" y="63" text-anchor="end" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">${escapeXml(paperLabel)}</text>
-  <g transform="translate(${artOffsetX} ${ART_OFFSET_Y})">
-    <image href="${raster}" xlink:href="${raster}" width="${ART_SIZE}" height="${ART_SIZE}"/>
-    ${overlayMarkup(goreCount, hemisphere, marks)}
-    ${logoVisible ? `<image href="${logo.dataUrl}" xlink:href="${logo.dataUrl}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>` : ''}
-    <circle cx="${CENTER}" cy="${CENTER}" r="12" fill="#fffaf0" stroke="#173f3a" stroke-width="1.2"/>
-    <text x="${CENTER}" y="${CENTER + 3.5}" text-anchor="middle" fill="#173f3a" font-family="Arial, sans-serif" font-size="9" font-weight="700">${hemisphere === 'north' ? 'N' : 'S'}</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" font-family="Arial, sans-serif" fill="#173f3a">
+  <title>${name} hemisphere, ${goreCount} gores, ${diameter} inch diameter</title>
+  <rect width="${width}" height="${height}" fill="#fffdf8"/>
+  <text x="12" y="18" font-size="5" font-weight="bold">PAPER GLOBE</text>
+  <text x="12" y="25" font-size="2.8">${name} hemisphere · Sheet ${hemisphere === 'north' ? 1 : 2} of 2 · ${goreCount} gores</text>
+  <text x="${width - 12}" y="18" text-anchor="end" font-size="2.8">${layout.label}</text>
+  <g data-layer="art" transform="translate(${layout.x} ${layout.y})">
+    ${raster ? `<image data-layer="raster" href="${png(raster)}" width="${art}" height="${art}"/>` : ''}
+    ${overlay}
+    ${visible && logo.position !== 'equator' ? '' : `<circle cx="${center}" cy="${center}" r="2.8" fill="#fffaf0" stroke="#173f3a" stroke-width="0.2"/><text x="${center}" y="${center + 1}" text-anchor="middle" font-size="2.8">${hemisphere === 'north' ? 'N' : 'S'}</text>`}
+    ${visible ? `<image data-layer="logo" href="${png(logo.dataUrl)}" x="${center - logoSize / 2}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>` : ''}
   </g>
-  ${annotationsMarkup(page.width, page.height, annotations)}
-  <line x1="48" y1="${page.height - 147}" x2="${page.width - 48}" y2="${page.height - 147}" stroke="#e0dbd0"/>
-  <text x="48" y="${page.height - 122}" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Finished globe: ${diameter} in diameter</text>
-  <text x="${page.width - 48}" y="${page.height - 122}" text-anchor="end" fill="#6b746e" font-family="Arial, sans-serif" font-size="9">Cut ${marks.dashedCutLines ? 'dashed' : 'solid'} · Fold dashed</text>
-  <text x="48" y="${page.height - 48}" fill="#8b8f88" font-family="Arial, sans-serif" font-size="8">Generated locally with Paper Globe</text>
+  ${notes}
+  <text x="12" y="${height - 26}" font-size="2.7">Target diameter: ${diameter} in · Print at 100% / actual size. Disable fit-to-page.</text>
+  <path data-layer="scale-check" d="M 12 ${height - 20} v 3 m 0 -1.5 h 25.4 m 0 -1.5 v 3" fill="none" stroke="#173f3a" stroke-width="0.25"/>
+  <text x="40" y="${height - 18}" font-size="2.5">Scale check: exactly 1 in / 25.4 mm</text>
+  <text x="12" y="${height - 12}" font-size="2.4">Cut ${marks.cutLines ? (marks.dashedCutLines ? 'green dashed' : 'green solid') : 'marks hidden'} · Fold ${marks.foldLines ? 'red dashed' : 'marks hidden'} · Generated locally</text>
 </svg>`;
 }
-
-export function downloadSvg(svg: string, filename: string) {
-  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+export function exportFilename(options: Pick<SvgOptions, 'hemisphere' | 'goreCount' | 'diameter' | 'paperSize'>) {
+  return `paper-globe-${options.hemisphere}-${options.goreCount}-gores-${options.diameter}in-${options.paperSize}.svg`;
 }
-
-export function printBothHemispheres({
-  sourceImage,
-  sourceProjection,
-  goreCount,
-  diameter,
-  paperLabel,
-  paperSize,
-  marks,
-  logo,
-  annotations,
-}: {
-  sourceImage: HTMLImageElement;
-  sourceProjection: SourceProjection;
-  goreCount: number;
-  diameter: number;
-  paperLabel: string;
-  paperSize: 'letter' | 'a4' | 'tabloid';
-  marks: TemplateMarks;
-  logo?: LogoSettings;
-  annotations?: TemplateAnnotations;
-}) {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) throw new Error('Allow pop-ups to open the print preview.');
-
-  const north = renderHemisphereGores({
-    source: sourceImage,
-    sourceWidth: sourceImage.naturalWidth,
-    sourceHeight: sourceImage.naturalHeight,
-    goreCount,
-    hemisphere: 'north',
-    sourceProjection,
-  });
-  const south = renderHemisphereGores({
-    source: sourceImage,
-    sourceWidth: sourceImage.naturalWidth,
-    sourceHeight: sourceImage.naturalHeight,
-    goreCount,
-    hemisphere: 'south',
-    sourceProjection,
-  });
-  const northSvg = createTemplateSvg({ canvas: north, goreCount, hemisphere: 'north', diameter, paperLabel, paperSize, logo, annotations, ...marks });
-  const southSvg = createTemplateSvg({ canvas: south, goreCount, hemisphere: 'south', diameter, paperLabel, paperSize, logo, annotations, ...marks });
-  const northUrl = URL.createObjectURL(new Blob([northSvg], { type: 'image/svg+xml' }));
-  const southUrl = URL.createObjectURL(new Blob([southSvg], { type: 'image/svg+xml' }));
-
-  const printSize = PAPER[paperSize].css;
-  printWindow.document.title = 'Paper Globe — Print';
-  printWindow.document.head.innerHTML = `<style>
-    *{box-sizing:border-box} body{margin:0;background:#d9d7d1} .sheet{width:${PAPER[paperSize].width / 96}in;height:${PAPER[paperSize].height / 96}in;margin:20px auto;background:white;page-break-after:always}.sheet img{display:block;width:100%;height:100%}
-    @media print{body{background:white}.sheet{margin:0;page-break-after:always}@page{size:${printSize};margin:0}}
-  </style>`;
-  printWindow.document.body.innerHTML = `<div class="sheet"><img src="${northUrl}" alt="Northern hemisphere template"></div><div class="sheet"><img src="${southUrl}" alt="Southern hemisphere template"></div>`;
-  const images = Array.from(printWindow.document.images);
-  void Promise.all(images.map((image) => image.complete
-    ? Promise.resolve()
-    : new Promise<void>((resolve) => {
-      image.addEventListener('load', () => resolve(), { once: true });
-      image.addEventListener('error', () => resolve(), { once: true });
-    })))
-    .then(() => printWindow.setTimeout(() => printWindow.print(), 250))
-    .catch(() => printWindow.print());
-  printWindow.addEventListener('afterprint', () => {
-    URL.revokeObjectURL(northUrl);
-    URL.revokeObjectURL(southUrl);
-  }, { once: true });
+export async function rasterDataUrl(image: PixelImage, signal?: AbortSignal): Promise<string> {
+  throwIfAborted(signal);
+  const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+  try {
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas rendering is unavailable.');
+    const data = context.createImageData(image.width, image.height); data.data.set(image.pixels); context.putImageData(data, 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Could not encode the rendered map.')), 'image/png'));
+    throwIfAborted(signal);
+    const result = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read the rendered map.'));
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Invalid rendered map.'));
+      reader.readAsDataURL(blob);
+    });
+    throwIfAborted(signal); return result;
+  } finally { canvas.width = 0; canvas.height = 0; }
+}
+export function downloadSvg(svg: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename;
+  document.body.append(anchor); anchor.click(); anchor.remove();
+  // Delayed revocation lets browsers start the download; never revoke in the click's stack.
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+export function openPrintSession(paperSize: PaperSize) {
+  const popup = window.open('', '_blank');
+  if (!popup) throw new Error('Allow pop-ups for Paper Globe, then choose Print / PDF again.');
+  popup.document.title = 'Paper Globe — Print';
+  popup.document.body.textContent = 'Preparing both templates locally…';
+  const urls: string[] = [];
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const cleanup = () => {
+    while (urls.length) URL.revokeObjectURL(urls.pop()!);
+    if (interval !== undefined) clearInterval(interval);
+    window.removeEventListener('pagehide', cleanup);
+    popup.removeEventListener('pagehide', cleanup);
+    popup.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('pagehide', cleanup, { once: true });
+  popup.addEventListener('pagehide', cleanup, { once: true });
+  popup.addEventListener('afterprint', cleanup, { once: true });
+  interval = setInterval(() => { if (popup.closed) cleanup(); }, 500);
+  const close = () => { cleanup(); if (!popup.closed) popup.close(); };
+  return {
+    close,
+    async print(svgs: string[], signal?: AbortSignal) {
+      if (svgs.length !== 2) throw new Error('Printing requires north and south templates.');
+      throwIfAborted(signal);
+      if (popup.closed) throw abortError();
+      const paper = PAPER[paperSize];
+      const style = popup.document.createElement('style');
+      style.textContent = `body{margin:0;background:#ddd}.sheet{width:${paper.widthMm}mm;height:${paper.heightMm}mm;margin:12px auto}.sheet img{display:block;width:100%;height:100%}@media print{@page{size:${paper.widthMm}mm ${paper.heightMm}mm;margin:0}body{background:white}.sheet{margin:0;break-after:page}.sheet:last-child{break-after:auto}}`;
+      popup.document.head.append(style); popup.document.body.replaceChildren();
+      try {
+        await Promise.all(svgs.map((svg, index) => new Promise<void>((resolve, reject) => {
+          const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); urls.push(url);
+          const sheet = popup.document.createElement('div'); sheet.className = 'sheet';
+          const image = popup.document.createElement('img'); image.alt = `${index === 0 ? 'North' : 'South'} hemisphere template`;
+          const finish = (error?: Error) => { clearTimeout(timer); signal?.removeEventListener('abort', abort); image.onload = null; image.onerror = null; if (error) reject(error); else resolve(); };
+          const abort = () => finish(abortError());
+          const timer = setTimeout(() => finish(new Error('Print images could not load. Try downloading SVG instead.')), 30_000);
+          signal?.addEventListener('abort', abort, { once: true });
+          image.onload = () => image.naturalWidth ? finish() : finish(new Error('A print image is empty.'));
+          image.onerror = () => finish(new Error('A print image failed to load. Try downloading SVG instead.'));
+          sheet.append(image); popup.document.body.append(sheet); image.src = url;
+        })));
+        throwIfAborted(signal); if (popup.closed) throw abortError();
+        popup.focus(); popup.print();
+      } catch (error) { close(); throw error; }
+    },
+  };
 }
