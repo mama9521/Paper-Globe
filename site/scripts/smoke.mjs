@@ -7,7 +7,7 @@ const response = await fetch(new URL(`build.json?revision=${expected}`, url), { 
 assert.ok(response.ok, `Build manifest returned ${response.status}`);
 const manifest = await response.json(); assert.equal(manifest.commit, expected, 'Deployed revision does not match'); assert.equal(manifest.dirty, false, 'Dirty checkout was deployed');
 const page = await fetch(url); assert.ok(page.ok); const html = await page.text(); assert.match(html, /Paper Globe/);
-const assets = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))(?:\?[^\"]*)?"/g)].map((match) => new URL(match[1], url)).filter((asset) => asset.origin === url.origin);
+const assets = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))(?:\?[^" ]*)?"/g)].map((match) => new URL(match[1], url)).filter((asset) => asset.origin === url.origin);
 assert.ok(assets.length, 'No application assets found');
 for (const asset of assets.slice(0, 20)) assert.ok((await fetch(asset)).ok, `Asset failed: ${asset.pathname}`);
 console.log(`PASS: source ${expected}, page response, and ${Math.min(assets.length, 20)} application assets. Run test:workflow against this URL to verify projection/export.`);

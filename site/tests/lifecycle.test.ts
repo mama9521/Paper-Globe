@@ -6,7 +6,7 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-test('latest map/logo selection wins and stale resources are released (#5)', async () => {
+void test('latest map/logo selection wins and stale resources are released (#5)', async () => {
   const released: string[] = []; const loader = new LatestResource<string>((value) => released.push(value));
   const a = deferred<string>(); const b = deferred<string>();
   const first = loader.load(() => a.promise); const second = loader.load(() => b.promise);
@@ -17,14 +17,14 @@ test('latest map/logo selection wins and stale resources are released (#5)', asy
   await loader.load(() => Promise.resolve('C')); assert.deepEqual(released, ['A', 'B']);
   loader.clear(); loader.clear(); assert.deepEqual(released, ['A', 'B', 'C']);
 });
-test('stale errors do not replace the latest notice, unmount invalidates pending work (#3, #5)', async () => {
+void test('stale errors do not replace the latest notice, unmount invalidates pending work (#3, #5)', async () => {
   const released: string[] = []; const loader = new LatestResource<string>((value) => released.push(value));
   const a = deferred<string>(); const old = loader.load(() => a.promise);
   await loader.load(() => Promise.resolve('B')); a.reject(new Error('obsolete')); assert.equal(await old, undefined);
   const c = deferred<string>(); const pending = loader.load(() => c.promise); loader.clear(); c.resolve('C');
   assert.equal(await pending, undefined); assert.deepEqual(released, ['B', 'C']);
 });
-test('scheduler reports progress and aborts between slices (#8, #10)', async () => {
+void test('scheduler reports progress and aborts between slices (#8, #10)', async () => {
   const controller = new AbortController(); let closed = false;
   function* steps(): Generator<number, number> {
     try { for (let i = 0; i < 100; i += 1) { if (i === 10) controller.abort(); yield i / 100; } return 42; }

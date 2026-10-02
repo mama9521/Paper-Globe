@@ -76,7 +76,7 @@ async function main() {
         const target = document.createElement('canvas'); target.width = 816; target.height = 1056;
         const ctx = target.getContext('2d')!; ctx.drawImage(image, 0, 0, 816, 1056);
         const layout = paperLayout(3.5, 'letter'); const pixel = ctx.getImageData(408, Math.floor((layout.y + layout.artMm / 2) * 1056 / layout.heightMm), 1, 1).data;
-        assert(pixel[0] === 255 && pixel[1] === 0 && pixel[2] === 0, `Logo center obscured: ${[...pixel]}`);
+        assert(pixel[0] === 255 && pixel[1] === 0 && pixel[2] === 0, `Logo center obscured: ${pixel.join(',')}`);
         image.id = 'sample-template'; image.style.width = '600px'; document.body.append(image);
       } finally { URL.revokeObjectURL(url); }
     });

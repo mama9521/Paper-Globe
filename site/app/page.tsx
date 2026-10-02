@@ -58,7 +58,7 @@ export default function Home() {
                 <span className="upload-icon"><ImagePlus /></span><span className="upload-copy"><strong>{workshop.loading ? 'Checking image…' : source?.name ?? 'Choose a world map'}</strong><small>{source ? `${source.width.toLocaleString()} × ${source.height.toLocaleString()} pixels` : 'PNG, JPEG or WebP · up to 8 megapixels'}</small></span><Upload className="upload-arrow" />
               </button>
               <div className="field-stack"><label htmlFor="source-projection">Map projection</label><select id="source-projection" value={settings.sourceProjection} onChange={(event) => workshop.update({ sourceProjection: event.target.value as SourceProjection })}>{SOURCE_PROJECTION_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><p className="projection-help">{sourceProjectionHint(settings.sourceProjection)}</p></div>
-              {aspectWarning && <p className="input-warning" role="status">Accepted at this aspect ratio. Confirm the entire image represents 360° × 180°; otherwise the geography will be distorted.</p>}
+              {aspectWarning && <output className="input-warning" aria-live="polite">Accepted at this aspect ratio. Confirm the entire image represents 360° × 180°; otherwise the geography will be distorted.</output>}
             </section>
             <section className="control-section">
               <div className="section-heading"><span>02</span><div><h2>Globe format</h2><p>Shape and finished size</p></div></div>
@@ -95,10 +95,10 @@ export default function Home() {
             ) : <div className="globe-placeholder" aria-label="Illustrative globe only"><div className={`wire-globe ${source && settings.sourceProjection === 'equirectangular' ? 'textured' : ''}`} style={source && settings.sourceProjection === 'equirectangular' ? { backgroundImage: `url(${source.objectUrl})` } : undefined} /><strong>Illustration only — not a 3D projection</strong><span>This view does not verify geography, seam fit, or physical assembly. Use Template to inspect the projected output.</span></div>}
           </div>
           <div className="preview-footer">
-            <div className="hemisphere-switch" role="group" aria-label="Preview hemisphere">{(['north', 'south'] as const).map((hemisphere) => <button key={hemisphere} type="button" disabled={workshop.exporting} aria-pressed={settings.hemisphere === hemisphere} className={settings.hemisphere === hemisphere ? 'active' : undefined} onClick={() => workshop.update({ hemisphere })}>{hemisphere === 'north' ? 'North' : 'South'}</button>)}</div>
-            <div className="render-status" role="status" aria-live="polite">
+            <fieldset className="hemisphere-switch" aria-label="Preview hemisphere">{(['north', 'south'] as const).map((hemisphere) => <button key={hemisphere} type="button" disabled={workshop.exporting} aria-pressed={settings.hemisphere === hemisphere} className={settings.hemisphere === hemisphere ? 'active' : undefined} onClick={() => workshop.update({ hemisphere })}>{hemisphere === 'north' ? 'North' : 'South'}</button>)}</fieldset>
+            <output className="render-status" aria-live="polite">
               {workshop.exporting ? `Preparing print-quality output: ${Math.round(workshop.exportProgress * 100)}%` : workshop.isRendering ? `Projecting locally: ${Math.round((workshop.render?.progress ?? 0) * 100)}%` : workshop.ready ? `Sheet ${settings.hemisphere === 'north' ? 1 : 2} of 2 ready.` : workshop.render?.phase === 'failed' ? workshop.render.error : workshop.render?.phase === 'cancelled' ? 'Projection cancelled.' : 'Choose a map to begin.'}
-            </div>
+            </output>
             {busy && <Button variant="ghost" size="sm" onClick={workshop.cancel}>Cancel</Button>}
             {!busy && source && !workshop.ready && <Button variant="outline" size="sm" onClick={workshop.retry}>Retry projection</Button>}
             <Button variant="outline" size="sm" onClick={() => { void workshop.exportTemplates('print'); }} disabled={!workshop.canExport}><Printer />Print / PDF</Button>

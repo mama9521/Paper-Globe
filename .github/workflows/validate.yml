@@ -26,10 +26,10 @@ jobs:
       - name: Source whitespace
         if: ${{ !cancelled() }}
         run: npm run format:check
-      - name: Lint
+      - name: Application lint
         if: ${{ !cancelled() }}
         run: npm run lint -- --format=stylish
-      - name: Type check
+      - name: Type check (including component library)
         if: ${{ !cancelled() }}
         run: npm run typecheck
       - name: Unit tests
@@ -41,17 +41,20 @@ jobs:
       - name: Production Worker build
         if: ${{ !cancelled() }}
         run: npm run build
-      - name: React workflow smoke tests
+      - name: Built Worker workflow smoke tests (local, not a deployment)
         if: ${{ !cancelled() }}
         run: |
-          npm run dev -- --port 4173 > /tmp/paper-globe-dev.log 2>&1 &
+          npm run start -- --local --port 4173 --ip 127.0.0.1 > /tmp/paper-globe-worker.log 2>&1 &
           SERVER=$!
           trap 'kill "$SERVER" || true' EXIT
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:4173/ > /dev/null; then break; fi
+          READY=0
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:4173/ > /dev/null; then READY=1; break; fi
+            if ! kill -0 "$SERVER" 2>/dev/null; then break; fi
             sleep 1
           done
-          npm run test:workflow -- http://127.0.0.1:4173 || { cat /tmp/paper-globe-dev.log; exit 1; }
+          if [ "$READY" != 1 ]; then cat /tmp/paper-globe-worker.log; exit 1; fi
+          npm run test:workflow -- http://127.0.0.1:4173 || { cat /tmp/paper-globe-worker.log; exit 1; }
       - name: No source changes during validation
         if: ${{ !cancelled() }}
         run: git diff --exit-code

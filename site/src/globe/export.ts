@@ -122,7 +122,7 @@ export function openPrintSession(paperSize: PaperSize) {
   let interval: ReturnType<typeof setInterval> | undefined;
   const cleanup = () => {
     while (urls.length) URL.revokeObjectURL(urls.pop()!);
-    if (interval !== undefined) clearInterval(interval);
+    if (interval !== undefined) { clearInterval(interval); interval = undefined; }
     window.removeEventListener('pagehide', cleanup);
     popup.removeEventListener('pagehide', cleanup);
     popup.removeEventListener('afterprint', cleanup);
