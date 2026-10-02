@@ -23,13 +23,26 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
-      - name: Verify browser availability
-        run: google-chrome --version
-      - name: Source, type, unit, and browser-engine checks
-        run: npm run check
+      - name: Source whitespace
+        if: ${{ !cancelled() }}
+        run: npm run format:check
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: npm run lint -- --format=stylish
+      - name: Type check
+        if: ${{ !cancelled() }}
+        run: npm run typecheck
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: npm test
+      - name: Browser engine tests
+        if: ${{ !cancelled() }}
+        run: npm run test:browser
       - name: Production Worker build
+        if: ${{ !cancelled() }}
         run: npm run build
       - name: React workflow smoke tests
+        if: ${{ !cancelled() }}
         run: |
           npm run dev -- --port 4173 > /tmp/paper-globe-dev.log 2>&1 &
           SERVER=$!
@@ -40,4 +53,5 @@ jobs:
           done
           npm run test:workflow -- http://127.0.0.1:4173 || { cat /tmp/paper-globe-dev.log; exit 1; }
       - name: No source changes during validation
+        if: ${{ !cancelled() }}
         run: git diff --exit-code
