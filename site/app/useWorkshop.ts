@@ -87,7 +87,10 @@ export function useWorkshop() {
   };
   // A mismatched raster is never paired with new geometry or exported under new labels.
   const previewSvg = fitError ? undefined : createTemplateSvg({ ...spec, raster: ready ? render?.raster : undefined });
-  const update = (patch: Partial<Settings>) => setSettings((previous) => ({ ...previous, ...patch }));
+  const update = (patch: Partial<Settings>) => {
+    setNotice(undefined);
+    setSettings((previous) => ({ ...previous, ...patch }));
+  };
   const setMark = (name: keyof TemplateMarks, checked: boolean) => setSettings((previous) => ({ ...previous, marks: { ...previous.marks, [name]: checked } }));
 
   const chooseMap = async (file?: File) => {
@@ -151,7 +154,7 @@ export function useWorkshop() {
   return {
     settings, update, setMark, mode, setMode, source, logo, notice, loading, logoLoading,
     chooseMap, chooseLogo, removeLogo, resetView, cancel, exportTemplates,
-    retry: () => setRetry((value) => value + 1), render, ready, isRendering,
+    retry: () => { setNotice(undefined); setRetry((value) => value + 1); }, render, ready, isRendering,
     exporting, exportProgress, previewSvg, fitError, maximumDiameter: maximumDiameter(settings.paperSize),
     canExport: ready && !loading && !logoLoading && !fitError && !exporting,
   };
