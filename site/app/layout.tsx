@@ -4,6 +4,10 @@ import './globals.css';
 export const metadata: Metadata = {
   metadataBase: new URL('https://paper-globe.mtaxmraz.workers.dev'),
   title: 'Paper Globe — Projection Workshop',
+  icons: {
+    icon: { url: '/favicon.svg?v=2', type: 'image/svg+xml' },
+    shortcut: '/favicon.svg?v=2',
+  },
   description:
     'Turn any 2:1 equirectangular world map into a printable paper globe, privately in your browser.',
   openGraph: {

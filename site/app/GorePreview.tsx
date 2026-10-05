@@ -6,10 +6,9 @@ import Image from 'next/image';
 import {
   centralMeridians,
   goreRotationDegrees,
-  glueTabOutline,
-  lobeOutline,
-  pointsToSvgPath,
+  goreTemplatePaths,
   renderHemisphereGores,
+  type GlueTabShape,
   type Hemisphere,
 } from '@/src/globe/gore';
 import type { LogoSettings } from '@/src/globe/export';
@@ -25,6 +24,7 @@ type GorePreviewProps = {
   dashCutLines: boolean;
   showFoldLines: boolean;
   showTabs: boolean;
+  tabShape: GlueTabShape;
   onRenderingChange?: (rendering: boolean) => void;
   logo?: LogoSettings;
 };
@@ -43,17 +43,14 @@ export function GorePreview({
   dashCutLines,
   showFoldLines,
   showTabs,
+  tabShape,
   onRenderingChange,
   logo,
 }: GorePreviewProps) {
   const [renderError, setRenderError] = useState<string | null>(null);
-  const outline = useMemo(
-    () => pointsToSvgPath(lobeOutline(goreCount, hemisphere, RADIUS)),
-    [goreCount, hemisphere],
-  );
-  const tabOutline = useMemo(
-    () => pointsToSvgPath(glueTabOutline(goreCount, RADIUS)),
-    [goreCount],
+  const paths = useMemo(
+    () => goreTemplatePaths(goreCount, hemisphere, RADIUS, showTabs, tabShape),
+    [goreCount, hemisphere, showTabs, tabShape],
   );
 
   useEffect(() => {
@@ -109,9 +106,10 @@ export function GorePreview({
 
           return (
             <g key={index} transform={`translate(${CENTER} ${CENTER}) rotate(${rotation})`}>
+              {showTabs && <path d={paths.tab} fill="#fffaf0" />}
               {showCutLines && (
                 <path
-                  d={outline}
+                  d={paths.cut}
                   fill="none"
                   stroke="#173f3a"
                   strokeWidth="1.45"
@@ -121,21 +119,11 @@ export function GorePreview({
               )}
               {showFoldLines && (
                 <path
-                  d={`M 0 2 L 0 ${RADIUS - 2}`}
+                  d={`M 0 2 L 0 ${RADIUS - 2} ${paths.tabFold}`}
                   fill="none"
                   stroke="#b04a3c"
                   strokeDasharray="5 4"
                   strokeWidth="1"
-                />
-              )}
-              {showTabs && (
-                <path
-                  d={tabOutline}
-                  fill="#fffaf0"
-                  stroke="#173f3a"
-                  strokeWidth="1"
-                  strokeDasharray={dashCutLines ? '6 4' : undefined}
-                  strokeLinecap={dashCutLines ? 'round' : undefined}
                 />
               )}
             </g>

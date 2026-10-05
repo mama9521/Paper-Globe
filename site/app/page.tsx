@@ -31,12 +31,15 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { GorePreview } from './GorePreview';
 import { createTemplateSvg, downloadSvg, printBothHemispheres } from '@/src/globe/export';
+import { templateExportName } from '@/src/globe/export-name';
 import {
   centralMeridians,
+  GLUE_TAB_OPTIONS,
   goreRotationDegrees,
+  goreTemplatePaths,
   glueTabOutline,
-  lobeOutline,
   pointsToSvgPath,
+  type GlueTabShape,
 } from '@/src/globe/gore';
 import {
   SOURCE_PROJECTION_OPTIONS,
@@ -83,6 +86,7 @@ function TemplatePreview({
   dashedCutLines,
   foldLines,
   tabs,
+  tabShape,
 }: {
   hemisphere: Hemisphere;
   goreCount: number;
@@ -90,10 +94,10 @@ function TemplatePreview({
   dashedCutLines: boolean;
   foldLines: boolean;
   tabs: boolean;
+  tabShape: GlueTabShape;
 }) {
   const radius = 170;
-  const outline = pointsToSvgPath(lobeOutline(goreCount, hemisphere, radius));
-  const tabOutline = pointsToSvgPath(glueTabOutline(goreCount, radius));
+  const paths = goreTemplatePaths(goreCount, hemisphere, radius, tabs, tabShape);
 
   return (
     <figure className="template-figure">
@@ -118,32 +122,24 @@ function TemplatePreview({
           key={centralMeridian}
           transform={`rotate(${goreRotationDegrees(goreCount, hemisphere, index)})`}
         >
+          <path d={paths.lobe} fill="url(#paper)" />
+          <path d={paths.lobe} fill="url(#longitude)" />
+          {tabs && <path d={paths.tab} fill="#fffaf0" />}
           <path
-            d={outline}
-            fill="url(#paper)"
+            d={paths.cut}
+            fill="none"
             stroke={cutLines ? '#173f3a' : 'none'}
             strokeWidth="1.6"
             strokeDasharray={dashedCutLines ? '5 4' : undefined}
             strokeLinecap={dashedCutLines ? 'round' : undefined}
           />
-          <path d={outline} fill="url(#longitude)" />
           {foldLines && (
             <path
-              d={`M0 1 L0 ${radius - 3}`}
+              d={`M0 1 L0 ${radius - 3} ${paths.tabFold}`}
               fill="none"
               stroke="#b04a3c"
               strokeDasharray="4 4"
               strokeWidth="0.9"
-            />
-          )}
-          {tabs && (
-            <path
-              d={tabOutline}
-              fill="#fffaf0"
-              stroke="#173f3a"
-              strokeWidth="0.8"
-              strokeDasharray={dashedCutLines ? '5 4' : undefined}
-              strokeLinecap={dashedCutLines ? 'round' : undefined}
             />
           )}
           {goreCount <= 8 && (
@@ -210,6 +206,7 @@ export default function Home() {
   const [dashedCutLines, setDashedCutLines] = useState(false);
   const [foldLines, setFoldLines] = useState(true);
   const [tabs, setTabs] = useState(true);
+  const [tabShape, setTabShape] = useState<GlueTabShape>('trapezoid');
   const [descriptionEnabled, setDescriptionEnabled] = useState(false);
   const [descriptionText, setDescriptionText] = useState('');
   const [legendEnabled, setLegendEnabled] = useState(false);
@@ -289,13 +286,14 @@ export default function Home() {
       dashedCutLines,
       foldLines,
       tabs,
+      tabShape,
       annotations: {
         description: descriptionEnabled ? descriptionText : undefined,
         legend: legendEnabled ? legendText : undefined,
       },
       logo: logoLayer ? { dataUrl: logoLayer.dataUrl, position: logoPosition, scale: logoScale } : undefined,
     });
-    downloadSvg(svg, `paper-globe-${hemisphere}-${goreCount}-gores.svg`);
+    downloadSvg(svg, `${templateExportName(sourceMap.name, goreCount, hemisphere)}.svg`);
     setNotice(`${hemisphere === 'north' ? 'Northern' : 'Southern'} hemisphere SVG downloaded.`);
   };
 
@@ -307,12 +305,13 @@ export default function Home() {
     try {
       printBothHemispheres({
         sourceImage: sourceMap.image,
+        sourceName: sourceMap.name,
         sourceProjection,
         goreCount,
         diameter,
         paperLabel,
         paperSize,
-        marks: { cutLines, dashedCutLines, foldLines, tabs },
+        marks: { cutLines, dashedCutLines, foldLines, tabs, tabShape },
         annotations: {
           description: descriptionEnabled ? descriptionText : undefined,
           legend: legendEnabled ? legendText : undefined,
@@ -494,6 +493,34 @@ export default function Home() {
             />
             <SettingRow id="fold-lines" label="Fold lines" checked={foldLines} onCheckedChange={setFoldLines} />
             <SettingRow id="tabs" label="Glue tabs" checked={tabs} onCheckedChange={setTabs} />
+            <fieldset className="tab-shape-options" disabled={!tabs}>
+              <legend>Glue-tab shape</legend>
+              <div className="tab-shape-grid">
+                {GLUE_TAB_OPTIONS.map((option) => (
+                  <label key={option.value} className="tab-shape-choice">
+                    <input
+                      type="radio"
+                      name="tab-shape"
+                      value={option.value}
+                      checked={tabShape === option.value}
+                      onChange={() => setTabShape(option.value)}
+                    />
+                    <span>
+                      <svg viewBox="-23 96 46 22" aria-hidden="true">
+                        <path
+                          d={pointsToSvgPath(glueTabOutline(6, 100, option.value))}
+                          fill="#f6f1e7"
+                          stroke="currentColor"
+                          strokeWidth="1.1"
+                        />
+                      </svg>
+                      {option.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p>{GLUE_TAB_OPTIONS.find((option) => option.value === tabShape)?.hint} Fold along the tab base.</p>
+            </fieldset>
           </section>
 
           <section className="control-section annotation-settings">
@@ -636,6 +663,7 @@ export default function Home() {
                         dashCutLines={dashedCutLines}
                         showFoldLines={foldLines}
                         showTabs={tabs}
+                        tabShape={tabShape}
                         onRenderingChange={setIsRendering}
                         logo={logoLayer ? { dataUrl: logoLayer.dataUrl, position: logoPosition, scale: logoScale } : undefined}
                       />
@@ -649,6 +677,7 @@ export default function Home() {
                       dashedCutLines={dashedCutLines}
                       foldLines={foldLines}
                       tabs={tabs}
+                      tabShape={tabShape}
                     />
                   )
                 ) : mode === 'map' ? (

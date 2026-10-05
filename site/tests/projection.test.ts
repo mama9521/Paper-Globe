@@ -4,8 +4,10 @@ import { cassiniForward, cassiniInverse } from '../src/globe/cassini';
 import { angularDistance, geoToPixel, pixelToGeo } from '../src/globe/coordinates';
 import { createTemplateSvg } from '../src/globe/export';
 import {
+  GLUE_TAB_OPTIONS,
   glueTabOutline,
   goreRotationDegrees,
+  goreTemplatePaths,
   hemisphereLayoutDirection,
 } from '../src/globe/gore';
 import {
@@ -46,6 +48,34 @@ for (const goreCount of [4, 6, 8, 12]) {
   closeTo(tab[2].y, tab[3].y);
   assert.ok(tab[2].y > tab[0].y, 'tab should extend beyond the gore edge');
   assert.ok(Math.abs(tab[2].x) < Math.abs(tab[1].x), 'tab should taper evenly');
+
+  for (const { value: shape } of GLUE_TAB_OPTIONS) {
+    const shapePoints = glueTabOutline(goreCount, 170, shape);
+    const halfWidth = (170 * 2 / goreCount) * 0.6;
+    const height = Math.min(170 * 0.14, (170 * 2 / goreCount) * 0.55);
+    for (const point of shapePoints) {
+      assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y));
+      assert.ok(Math.abs(point.x) <= halfWidth + 1e-8, 'tab stays inside the gore width');
+      assert.ok(point.y >= 170 && point.y <= 170 + height + 1e-8, 'tab stays inside the printable envelope');
+    }
+
+    for (const hemisphere of ['north', 'south'] as const) {
+      const paths = goreTemplatePaths(goreCount, hemisphere, 170, true, shape);
+      const cutPoints = Array.from(paths.cut.matchAll(/[ML] (-?[\d.]+) (-?[\d.]+)/g),
+        (match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+      assert.ok(cutPoints.some((point) => point.y > 170), 'cut line follows the tab exterior');
+      for (let index = 1; index < cutPoints.length; index += 1) {
+        const a = cutPoints[index - 1];
+        const b = cutPoints[index];
+        assert.ok(!(a.y === 170 && b.y === 170 && a.x * b.x < 0),
+          'cut line must not sever the tab along its base');
+      }
+      assert.match(paths.tabFold, /^M -[\d.]+ 170\.00 L [\d.]+ 170\.00$/);
+      const noTabs = goreTemplatePaths(goreCount, hemisphere, 170, false, shape);
+      assert.equal(noTabs.cut, noTabs.lobe);
+      assert.equal(noTabs.tabFold, '');
+    }
+  }
 }
 
 assert.equal(hemisphereLayoutDirection('north'), -1);

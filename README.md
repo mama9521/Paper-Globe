@@ -49,7 +49,9 @@ The deployable application is in `site/`. The current prototype already:
 - detects uniform margins around rounded Natural Earth and Robinson map footprints;
 - renders 4, 6, 8, or 12 radial gores with the correct opposite winding for north and south;
 - separates the raster map from SVG cut, fold, tab, label, and logo layers;
+- offers trapezoid, rounded, rectangular, and triangular glue tabs with fold lines at their bases;
 - exports the active hemisphere as SVG and opens a two-page browser print view;
+- uses the uploaded map filename for SVG downloads and the suggested Print/PDF name;
 - presents Letter, A4, and Tabloid controls, optional description and custom legend boxes, and an optional logo layer; and
 - provides source-map, template, and visual wrapped-globe views.
 

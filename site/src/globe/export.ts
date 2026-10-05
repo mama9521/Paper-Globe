@@ -1,19 +1,20 @@
 import {
   centralMeridians,
   goreRotationDegrees,
-  glueTabOutline,
-  lobeOutline,
-  pointsToSvgPath,
+  goreTemplatePaths,
   renderHemisphereGores,
+  type GlueTabShape,
   type Hemisphere,
 } from './gore';
 import type { SourceProjection } from './source-projection';
+import { templateExportName } from './export-name';
 
 export type TemplateMarks = {
   cutLines: boolean;
   dashedCutLines: boolean;
   foldLines: boolean;
   tabs: boolean;
+  tabShape?: GlueTabShape;
 };
 
 export type LogoSettings = {
@@ -59,17 +60,16 @@ function escapeXml(value: string) {
 }
 
 function overlayMarkup(goreCount: number, hemisphere: Hemisphere, marks: TemplateMarks) {
-  const outline = pointsToSvgPath(lobeOutline(goreCount, hemisphere, RADIUS));
-  const tabOutline = pointsToSvgPath(glueTabOutline(goreCount, RADIUS));
+  const paths = goreTemplatePaths(goreCount, hemisphere, RADIUS, marks.tabs, marks.tabShape);
   const cutDash = marks.dashedCutLines ? ' stroke-dasharray="6 4" stroke-linecap="round"' : '';
 
   return centralMeridians(goreCount)
     .map((_, index) => {
       const rotation = goreRotationDegrees(goreCount, hemisphere, index);
       return `<g transform="translate(${CENTER} ${CENTER}) rotate(${rotation})">
-        ${marks.cutLines ? `<path d="${outline}" fill="none" stroke="#173f3a" stroke-width="1.45"${cutDash}/>` : ''}
-        ${marks.foldLines ? `<path d="M 0 2 L 0 ${RADIUS - 2}" fill="none" stroke="#b04a3c" stroke-width="1" stroke-dasharray="5 4"/>` : ''}
-        ${marks.tabs ? `<path d="${tabOutline}" fill="#fffaf0" stroke="#173f3a" stroke-width="1"${cutDash}/>` : ''}
+        ${marks.tabs ? `<path d="${paths.tab}" fill="#fffaf0"/>` : ''}
+        ${marks.cutLines ? `<path d="${paths.cut}" fill="none" stroke="#173f3a" stroke-width="1.45"${cutDash}/>` : ''}
+        ${marks.foldLines ? `<path d="M 0 2 L 0 ${RADIUS - 2} ${paths.tabFold}" fill="none" stroke="#b04a3c" stroke-width="1" stroke-dasharray="5 4"/>` : ''}
       </g>`;
     })
     .join('');
@@ -190,6 +190,7 @@ export function downloadSvg(svg: string, filename: string) {
 
 export function printBothHemispheres({
   sourceImage,
+  sourceName,
   sourceProjection,
   goreCount,
   diameter,
@@ -200,6 +201,7 @@ export function printBothHemispheres({
   annotations,
 }: {
   sourceImage: HTMLImageElement;
+  sourceName: string;
   sourceProjection: SourceProjection;
   goreCount: number;
   diameter: number;
@@ -234,7 +236,7 @@ export function printBothHemispheres({
   const southUrl = URL.createObjectURL(new Blob([southSvg], { type: 'image/svg+xml' }));
 
   const printSize = PAPER[paperSize].css;
-  printWindow.document.title = 'Paper Globe — Print';
+  printWindow.document.title = templateExportName(sourceName, goreCount);
   printWindow.document.head.innerHTML = `<style>
     *{box-sizing:border-box} body{margin:0;background:#d9d7d1} .sheet{width:${PAPER[paperSize].width / 96}in;height:${PAPER[paperSize].height / 96}in;margin:20px auto;background:white;page-break-after:always}.sheet img{display:block;width:100%;height:100%}
     @media print{body{background:white}.sheet{margin:0;page-break-after:always}@page{size:${printSize};margin:0}}

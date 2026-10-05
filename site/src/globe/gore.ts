@@ -20,6 +20,15 @@ export type RenderGoresOptions = {
 
 export type TemplatePoint = { x: number; y: number };
 
+export const GLUE_TAB_OPTIONS = [
+  { value: 'trapezoid', label: 'Trapezoid', hint: 'Tapered sides with a broad gluing edge.' },
+  { value: 'rounded', label: 'Rounded', hint: 'A curved edge with no sharp corners.' },
+  { value: 'rectangle', label: 'Rectangle', hint: 'Straight cuts and the largest gluing area.' },
+  { value: 'triangle', label: 'Triangle', hint: 'Two angled cuts with a smaller gluing area.' },
+] as const;
+
+export type GlueTabShape = typeof GLUE_TAB_OPTIONS[number]['value'];
+
 const TAU = Math.PI * 2;
 
 export function centralMeridians(goreCount: number) {
@@ -70,15 +79,37 @@ export function lobeOutline(
   return points;
 }
 
-export function glueTabOutline(goreCount: number, radius: number): TemplatePoint[] {
+export function glueTabOutline(
+  goreCount: number,
+  radius: number,
+  shape: GlueTabShape = 'trapezoid',
+): TemplatePoint[] {
   const goreHalfWidth = (radius * 2) / goreCount;
   const baseHalfWidth = goreHalfWidth * 0.6;
   const outerHalfWidth = baseHalfWidth * 0.78;
   const height = Math.min(radius * 0.14, goreHalfWidth * 0.55);
+  const base = [{ x: -baseHalfWidth, y: radius }, { x: baseHalfWidth, y: radius }];
+
+  if (shape === 'triangle') {
+    return [...base, { x: 0, y: radius + height }];
+  }
+
+  if (shape === 'rectangle') {
+    return [...base,
+      { x: baseHalfWidth, y: radius + height },
+      { x: -baseHalfWidth, y: radius + height },
+    ];
+  }
+
+  if (shape === 'rounded') {
+    return [...base, ...Array.from({ length: 23 }, (_, index) => {
+      const angle = ((index + 1) / 24) * Math.PI;
+      return { x: baseHalfWidth * Math.cos(angle), y: radius + height * Math.sin(angle) };
+    })];
+  }
 
   return [
-    { x: -baseHalfWidth, y: radius },
-    { x: baseHalfWidth, y: radius },
+    ...base,
     { x: outerHalfWidth, y: radius + height },
     { x: -outerHalfWidth, y: radius + height },
   ];
@@ -88,6 +119,32 @@ export function pointsToSvgPath(points: TemplatePoint[]) {
   return `${points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
     .join(' ')} Z`;
+}
+
+export function goreTemplatePaths(
+  goreCount: number,
+  hemisphere: Hemisphere,
+  radius: number,
+  tabs: boolean,
+  tabShape: GlueTabShape = 'trapezoid',
+) {
+  const lobe = lobeOutline(goreCount, hemisphere, radius);
+  const tab = glueTabOutline(goreCount, radius, tabShape);
+  const equatorIndex = lobe.findIndex((point) => Math.abs(point.y - radius) < 1e-8);
+  // Follow the tab's outer edge instead of cutting across its attachment to the gore.
+  const cut = tabs ? [
+    ...lobe.slice(0, equatorIndex + 1),
+    tab[0],
+    ...tab.slice(1).reverse(),
+    ...lobe.slice(equatorIndex + 1),
+  ] : lobe;
+
+  return {
+    lobe: pointsToSvgPath(lobe),
+    tab: pointsToSvgPath(tab),
+    cut: pointsToSvgPath(cut),
+    tabFold: tabs ? `M ${tab[0].x.toFixed(2)} ${radius.toFixed(2)} L ${tab[1].x.toFixed(2)} ${radius.toFixed(2)}` : '',
+  };
 }
 
 function sampleBilinear(
