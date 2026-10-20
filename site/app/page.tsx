@@ -10,7 +10,7 @@ import { GorePreview } from './GorePreview';
 import { useWorkshop, type PreviewMode } from './useWorkshop';
 import { PAPER, EXPORT_DPI, type PaperSize } from '../src/globe/paper';
 import { SOURCE_PROJECTION_OPTIONS, sourceProjectionHint, type SourceProjection } from '../src/globe/source-projection';
-import type { GoreCount } from '../src/globe/geometry';
+import { GLUE_TAB_OPTIONS, glueTabOutline, pointsToSvgPath, type GoreCount } from '../src/globe/geometry';
 import type { LogoSettings, TemplateMarks } from '../src/globe/export';
 import './workshop.css';
 
@@ -29,7 +29,8 @@ export default function Home() {
   const hemisphereName = settings.hemisphere === 'north' ? 'Northern' : 'Southern';
   const aspectWarning = source && settings.sourceProjection === 'equirectangular' && Math.abs(source.width / source.height - 2) >= 0.03;
   const busy = workshop.exporting || workshop.isRendering;
-  const markOptions: [keyof TemplateMarks, string][] = [['cutLines', 'Cut lines'], ['dashedCutLines', 'Dashed cut outline'], ['foldLines', 'Fold lines'], ['tabs', 'Glue tabs']];
+  const markOptions: [Exclude<keyof TemplateMarks, 'tabShape'>, string][] = [['cutLines', 'Cut lines'], ['dashedCutLines', 'Dashed cut outline'], ['foldLines', 'Fold lines'], ['tabs', 'Glue tabs']];
+  const tabShape = settings.marks.tabShape ?? 'trapezoid';
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -67,7 +68,9 @@ export default function Home() {
               <div className="field-stack"><label htmlFor="paper">Paper size</label><select id="paper" value={settings.paperSize} onChange={(event) => workshop.update({ paperSize: event.target.value as PaperSize })}>{(Object.keys(PAPER) as PaperSize[]).map((size) => <option key={size} value={size}>{PAPER[size].label} · {PAPER[size].widthMm} × {PAPER[size].heightMm} mm</option>)}</select></div>
               {workshop.fitError && <p className="input-warning" role="alert">{workshop.fitError}</p>}
             </section>
-            <section className="control-section line-settings"><div className="section-heading compact"><span>03</span><h2>Assembly marks</h2></div>{markOptions.map(([name, label]) => <CheckSetting key={name} id={name} label={label} checked={settings.marks[name]} disabled={name === 'dashedCutLines' && !settings.marks.cutLines} onChange={(checked) => workshop.setMark(name, checked)} />)}</section>
+            <section className="control-section line-settings"><div className="section-heading compact"><span>03</span><h2>Assembly marks</h2></div>{markOptions.map(([name, label]) => <CheckSetting key={name} id={name} label={label} checked={settings.marks[name]} disabled={name === 'dashedCutLines' && !settings.marks.cutLines} onChange={(checked) => workshop.setMark(name, checked)} />)}
+              <fieldset className="tab-shape-options" disabled={!settings.marks.tabs}><legend>Glue-tab shape</legend><div className="tab-shape-grid">{GLUE_TAB_OPTIONS.map((option) => <label key={option.value} className="tab-shape-choice"><input type="radio" name="tab-shape" value={option.value} checked={tabShape === option.value} onChange={() => workshop.setMark('tabShape', option.value)} /><span><svg viewBox="-23 96 46 22" aria-hidden="true"><path d={pointsToSvgPath(glueTabOutline(6, 100, option.value))} fill="#f6f1e7" stroke="currentColor" strokeWidth="1.1" /></svg>{option.label}</span></label>)}</div><p>{GLUE_TAB_OPTIONS.find((option) => option.value === tabShape)?.hint} Fold along the tab base.</p></fieldset>
+            </section>
             <section className="control-section annotation-settings">
               <div className="section-heading"><span>04</span><div><h2>Notes &amp; legend</h2><p>Optional context for the printed globe</p></div></div>
               <CheckSetting id="description-box" label="Description box" checked={settings.descriptionEnabled} onChange={(descriptionEnabled) => workshop.update({ descriptionEnabled })} />

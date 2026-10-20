@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cassiniForward, cassiniInverse } from '../src/globe/cassini';
 import { angularDistance, geoToPixel, pixelToGeo } from '../src/globe/coordinates';
-import { centralMeridians, cutOutline, glueTabOutline, goreRotationDegrees, type Hemisphere } from '../src/globe/geometry';
+import { centralMeridians, cutOutline, GLUE_TAB_OPTIONS, glueTabOutline, goreRotationDegrees, lobeOutline, type Hemisphere } from '../src/globe/geometry';
 import { createTemplateSvg, escapeXml, exportFilename, wrapText, type SvgOptions } from '../src/globe/export';
 import { exportSize, maximumDiameter, paperLayout, PAPER, type PaperSize } from '../src/globe/paper';
 import { detectSourceContentBounds, sourceProjectionLimits, sourceProjectionToPixel } from '../src/globe/source-projection';
@@ -40,6 +40,30 @@ void test('tab attachments are not part of the cut path for all counts and hemis
     assert.doesNotMatch(createTemplateSvg({ ...options, goreCount: count, hemisphere, foldLines: false }), /data-layer="(?:fold|tab-fold)"/);
   }
 });
+void test('every glue-tab shape stays inside its attachment envelope and is cut around', () => {
+  const radius = 170;
+  for (const count of [4, 6, 8, 12]) for (const { value: shape } of GLUE_TAB_OPTIONS) {
+    const tab = glueTabOutline(count, radius, shape); const halfWidth = ((radius * 2) / count) * 0.6;
+    const height = Math.min(radius * 0.14, ((radius * 2) / count) * 0.55);
+    close(tab[0].x, -halfWidth); close(tab[1].x, halfWidth); close(tab[0].y, radius); close(tab[1].y, radius);
+    for (const point of tab) {
+      assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y));
+      assert.ok(Math.abs(point.x) <= halfWidth + 1e-8 && point.y >= radius - 1e-8 && point.y <= radius + height + 1e-8);
+    }
+    for (const hemisphere of ['north', 'south'] as Hemisphere[]) {
+      const outline = cutOutline(count, hemisphere, radius, true, shape);
+      assert.ok(outline.some((point) => point.y > radius));
+      for (let index = 0; index < outline.length; index += 1) {
+        const a = outline[index]; const b = outline[(index + 1) % outline.length];
+        assert.equal(Math.abs(a.y - radius) < 1e-8 && Math.abs(b.y - radius) < 1e-8 && Math.min(a.x, b.x) < 0 && Math.max(a.x, b.x) > 0, false);
+      }
+      assert.deepEqual(cutOutline(count, hemisphere, radius, false, shape), lobeOutline(count, hemisphere, radius));
+    }
+  }
+  const shapes = GLUE_TAB_OPTIONS.map(({ value }) => createTemplateSvg({ ...options, tabShape: value }));
+  assert.equal(new Set(shapes).size, GLUE_TAB_OPTIONS.length);
+  assert.throws(() => createTemplateSvg({ ...options, tabShape: 'star' as never }), /glue-tab shape/);
+});
 void test('diameter drives physical lengths, pages stay exact, and oversize is rejected (#1)', () => {
   for (const size of Object.keys(PAPER) as PaperSize[]) {
     const small = paperLayout(2, size); const large = paperLayout(3, size);
@@ -75,6 +99,7 @@ void test('annotations are escaped and bounded, sheet numbers and filenames iden
   assert.match(svg, /&lt;script&gt;&amp;&quot;&apos;/); assert.doesNotMatch(svg, /<script>/); assert.match(svg, /Sheet 2 of 2/);
   assert.equal(escapeXml('<&'), '&lt;&amp;'); assert.ok(wrapText('x'.repeat(240), 60).every((line) => line.length <= 40));
   assert.equal(exportFilename(options), 'paper-globe-north-6-gores-3in-letter.svg');
+  assert.equal(exportFilename({ ...options, sourceName: 'My World: Map.png' }), 'My World- Map-north-6-gores-3in-letter.svg');
 });
 void test('source projection extents and content bounds preserve prototype behavior', () => {
   for (const projection of ['natural-earth', 'robinson', 'web-mercator'] as const) {

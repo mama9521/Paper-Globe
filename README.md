@@ -10,6 +10,8 @@ The previous planning README is retained verbatim as [the historical implementat
 
 - Still PNG, JPEG, and WebP world maps in equirectangular, Natural Earth, Robinson, or Web Mercator projection.
 - 4, 6, 8, or 12 gores, opposite north/south winding, Letter/A4/Tabloid paper.
+- Trapezoid, rounded, rectangular, or triangular glue tabs, with fold lines at their bases.
+- SVG downloads and the suggested Print / PDF name use the uploaded map's filename.
 - Physical-size layout, explicit fit rejection, and a 25.4 mm / 1 inch scale check. Print at **100% / actual size**, with fit-to-page disabled.
 - One SVG scene for preview, downloadable SVG, and two-sheet browser printing. Map pixels are raster; cut/fold lines and labels are vector.
 - Independent 720-pixel preview and 200-DPI final raster output.

@@ -31,7 +31,7 @@ Severity: **P0** means broken or misleading, **P1** means a significant UX or ac
 | P0-6 | Preview does not match the export | Fixed |
 | P0-7 | Globe tab shows a mock-up as if it were a preview | Partial |
 | P0-8 | UI freezes while projecting | Fixed |
-| P0-9 | Glue-tab shape picker and map-based file names missing on the branch | New |
+| P0-9 | Glue-tab shape picker and map-based file names missing on the branch | Fixed |
 | P1-1 | Export actions split up and look alike | Open |
 | P1-2 | Layout doesn't fit a normal laptop screen | Open |
 | P1-3 | Mobile and tablet layout | Open |
@@ -109,10 +109,11 @@ Severity: **P0** means broken or misleading, **P1** means a significant UX or ac
 - **Problem (`main`):** Projection ran synchronously on the main thread, so the "Projecting map…" badge probably never painted.
 - **Branch:** `render.worker.ts` and `RenderClient` show progress, support cancellation and ignore stale results.
 
-### P0-9. Glue-tab shape picker and map-based file names missing on the branch — New
+### P0-9. Glue-tab shape picker and map-based file names missing on the branch — Fixed
 - **Problem:** `fix/review-issues-1-12` was branched from `78c8944`, before `main`'s `02a4887`. That commit added the glue-tab shape picker (`GLUE_TAB_OPTIONS`) and file names based on the uploaded map's name (`templateExportName`). The branch rewrote the same files, so neither feature exists on the branch and merging conflicts in six files.
 - **Fix:** Merge or rebase `main` into the branch. Port the tab-shape picker into the new `page.tsx` and `geometry.ts`/`createTemplateSvg()`. Decide between the two file-name schemes (`exportFilename` on the branch, `templateExportName` on `main`); a combination such as map name + hemisphere + gores + diameter + paper is recommended.
 - **Done when:** Both features work on the merged branch and appear in preview, SVG and print.
+- **Branch:** `main` was merged into the branch. `GLUE_TAB_OPTIONS` and the shaped `glueTabOutline()`/`cutOutline()` now live in `geometry.ts`, flow through `TemplateMarks.tabShape` into `createTemplateSvg()` (so preview, SVG and print match), and the picker sits under "Glue tabs" in section 03. `exportFilename()` now uses `templateExportName()` plus diameter and paper (for example `My Map-north-6-gores-3in-letter.svg`), and the print window title uses the map name.
 
 ---
 
@@ -338,7 +339,7 @@ Disabled controls at 46% or 65% opacity also fail. Use `--muted-foreground` (`#6
 
 ## Suggested order of work
 
-1. **Unblock the merge (P0-9):** Merge `main` into `fix/review-issues-1-12`, then restore the glue-tab picker and map-based file names.
+1. **Merge `main` (P0-9):** Done; the glue-tab picker and map-based file names are on the branch.
 2. **Quick fixes:** A-3 (global focus ring), A-2 (contrast tokens), P2-8, P1-4 (hide the hemisphere switch outside Template), P1-8 (sample badge).
 3. **Preview behavior:** P1-14 (keep the last good preview), P1-15 (feedback placement).
 4. **Layout:** P1-2 (fit the viewport), P1-1 (export area), P1-5 (hemisphere control), then P1-3 (mobile).

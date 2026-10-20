@@ -1,9 +1,10 @@
-import { centralMeridians, cutOutline, glueTabOutline, goreRotationDegrees, pointsToSvgPath, type Hemisphere } from './geometry';
+import { centralMeridians, cutOutline, glueTabOutline, goreRotationDegrees, isGlueTabShape, pointsToSvgPath, type GlueTabShape, type Hemisphere } from './geometry';
 import { MARGIN_MM, PAPER, paperLayout, type PaperSize } from './paper';
 import { abortError, throwIfAborted } from './lifecycle';
+import { templateExportName } from './export-name';
 import type { PixelImage } from './raster';
 
-export type TemplateMarks = { cutLines: boolean; dashedCutLines: boolean; foldLines: boolean; tabs: boolean };
+export type TemplateMarks = { cutLines: boolean; dashedCutLines: boolean; foldLines: boolean; tabs: boolean; tabShape?: GlueTabShape };
 export type LogoSettings = { dataUrl: string; position: 'north-pole' | 'south-pole' | 'equator'; scale: number };
 export type TemplateAnnotations = { description?: string; legend?: string };
 export type SvgOptions = TemplateMarks & {
@@ -40,9 +41,10 @@ export function createTemplateSvg(options: SvgOptions) {
   const { widthMm: width, heightMm: height, radiusMm: radius, artMm: art } = layout;
   if (hemisphere !== 'north' && hemisphere !== 'south') throw new Error('Invalid hemisphere.');
   if (logo && (!Number.isFinite(logo.scale) || logo.scale < 0.5 || logo.scale > 2 || !['north-pole', 'south-pole', 'equator'].includes(logo.position))) throw new Error('Invalid logo placement or scale.');
+  if (marks.tabShape !== undefined && !isGlueTabShape(marks.tabShape)) throw new Error('Invalid glue-tab shape.');
   const center = art / 2;
-  const outline = pointsToSvgPath(cutOutline(goreCount, hemisphere, radius, marks.tabs));
-  const tab = glueTabOutline(goreCount, radius);
+  const outline = pointsToSvgPath(cutOutline(goreCount, hemisphere, radius, marks.tabs, marks.tabShape));
+  const tab = glueTabOutline(goreCount, radius, marks.tabShape);
   const dash = marks.dashedCutLines ? ' stroke-dasharray="1.6 1.1"' : '';
   const overlay = centralMeridians(goreCount).map((_, index) => `<g transform="translate(${center} ${center}) rotate(${goreRotationDegrees(goreCount, hemisphere, index)})">
     ${marks.tabs ? `<path data-layer="tab-fill" d="${pointsToSvgPath(tab)}" fill="#fffaf0" stroke="none"/>` : ''}
@@ -85,8 +87,8 @@ export function createTemplateSvg(options: SvgOptions) {
   <text x="12" y="${height - 12}" font-size="2.4">Cut ${marks.cutLines ? (marks.dashedCutLines ? 'green dashed' : 'green solid') : 'marks hidden'} · Fold ${marks.foldLines ? 'red dashed' : 'marks hidden'} · Generated locally</text>
 </svg>`;
 }
-export function exportFilename(options: Pick<SvgOptions, 'hemisphere' | 'goreCount' | 'diameter' | 'paperSize'>) {
-  return `paper-globe-${options.hemisphere}-${options.goreCount}-gores-${options.diameter}in-${options.paperSize}.svg`;
+export function exportFilename(options: Pick<SvgOptions, 'hemisphere' | 'goreCount' | 'diameter' | 'paperSize'> & { sourceName?: string }) {
+  return `${templateExportName(options.sourceName ?? '', options.goreCount, options.hemisphere)}-${options.diameter}in-${options.paperSize}.svg`;
 }
 export async function rasterDataUrl(image: PixelImage, signal?: AbortSignal): Promise<string> {
   throwIfAborted(signal);
@@ -113,10 +115,11 @@ export function downloadSvg(svg: string, filename: string) {
   // Delayed revocation lets browsers start the download; never revoke in the click's stack.
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
-export function openPrintSession(paperSize: PaperSize) {
+export function openPrintSession(paperSize: PaperSize, title = 'Paper Globe — Print') {
   const popup = window.open('', '_blank');
   if (!popup) throw new Error('Allow pop-ups for Paper Globe, then choose Print / PDF again.');
-  popup.document.title = 'Paper Globe — Print';
+  // Browsers suggest the document title as the Save as PDF filename.
+  popup.document.title = title;
   popup.document.body.textContent = 'Preparing both templates locally…';
   const urls: string[] = [];
   let interval: ReturnType<typeof setInterval> | undefined;

@@ -5,6 +5,7 @@ import { RenderClient } from '../src/globe/render-client';
 import { LatestResource, isAbort, throwIfAborted } from '../src/globe/lifecycle';
 import { loadLogo, loadMap, type LogoResource, type MapResource } from '../src/globe/input';
 import { createTemplateSvg, downloadSvg, exportFilename, openPrintSession, rasterDataUrl, type LogoSettings, type SvgOptions, type TemplateMarks } from '../src/globe/export';
+import { templateExportName } from '../src/globe/export-name';
 import { exportSize, maximumDiameter, paperLayout, PREVIEW_SIZE, type PaperSize } from '../src/globe/paper';
 import type { SourceProjection } from '../src/globe/source-projection';
 import type { GoreCount, Hemisphere } from '../src/globe/geometry';
@@ -18,7 +19,7 @@ export type Settings = {
 };
 export const DEFAULT_SETTINGS: Settings = {
   sourceProjection: 'equirectangular', goreCount: 6, hemisphere: 'north', diameter: 3.5, paperSize: 'letter',
-  marks: { cutLines: true, dashedCutLines: false, foldLines: true, tabs: true },
+  marks: { cutLines: true, dashedCutLines: false, foldLines: true, tabs: true, tabShape: 'trapezoid' },
   descriptionEnabled: false, description: '', legendEnabled: false, legend: '', logoPosition: 'south-pole', logoScale: 1,
 };
 type ExportOperation = { controller: AbortController; print?: ReturnType<typeof openPrintSession> };
@@ -91,7 +92,7 @@ export function useWorkshop() {
     setNotice(undefined);
     setSettings((previous) => ({ ...previous, ...patch }));
   };
-  const setMark = (name: keyof TemplateMarks, checked: boolean) => setSettings((previous) => ({ ...previous, marks: { ...previous.marks, [name]: checked } }));
+  const setMark = <K extends keyof TemplateMarks>(name: K, value: TemplateMarks[K]) => setSettings((previous) => ({ ...previous, marks: { ...previous.marks, [name]: value } }));
 
   const chooseMap = async (file?: File) => {
     if (!file || operation.current) return;
@@ -127,7 +128,7 @@ export function useWorkshop() {
     const job: ExportOperation = { controller: new AbortController() };
     try {
       // Open synchronously while the user's click still permits a popup.
-      if (kind === 'print') job.print = openPrintSession(settings.paperSize);
+      if (kind === 'print') job.print = openPrintSession(settings.paperSize, templateExportName(source.name, goreCount));
       operation.current = job; setExporting(true); setExportProgress(0); setNotice(undefined);
       const hemispheres: Hemisphere[] = kind === 'print' ? ['north', 'south'] : [hemisphere];
       const svgs: string[] = [];
@@ -141,7 +142,7 @@ export function useWorkshop() {
       }
       throwIfAborted(job.controller.signal);
       if (job.print) await job.print.print(svgs, job.controller.signal);
-      else downloadSvg(svgs[0], exportFilename(spec));
+      else downloadSvg(svgs[0], exportFilename({ ...spec, sourceName: source.name }));
       if (mounted.current) setNotice({ kind: 'success', text: kind === 'print' ? 'Both sheets are ready. Print at 100% / actual size and measure the 1-inch scale check.' : `${hemisphere === 'north' ? 'Northern' : 'Southern'} SVG downloaded at print resolution.` });
     } catch (error) {
       job.print?.close();
