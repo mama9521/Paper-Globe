@@ -1,0 +1,60 @@
+name: Validate Paper Globe
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - name: Source whitespace
+        if: ${{ !cancelled() }}
+        run: npm run format:check
+      - name: Application lint
+        if: ${{ !cancelled() }}
+        run: npm run lint -- --format=stylish
+      - name: Type check (including component library)
+        if: ${{ !cancelled() }}
+        run: npm run typecheck
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: npm test
+      - name: Browser engine tests
+        if: ${{ !cancelled() }}
+        run: npm run test:browser
+      - name: Production Worker build
+        if: ${{ !cancelled() }}
+        run: npm run build
+      - name: Built Worker workflow smoke tests (local, not a deployment)
+        if: ${{ !cancelled() }}
+        run: |
+          npm run start -- --local --port 4173 --ip 127.0.0.1 > /tmp/paper-globe-worker.log 2>&1 &
+          SERVER=$!
+          trap 'kill "$SERVER" || true' EXIT
+          READY=0
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:4173/ > /dev/null; then READY=1; break; fi
+            if ! kill -0 "$SERVER" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$READY" != 1 ]; then cat /tmp/paper-globe-worker.log; exit 1; fi
+          npm run test:workflow -- http://127.0.0.1:4173 || { cat /tmp/paper-globe-worker.log; exit 1; }
+      - name: No source changes during validation
+        if: ${{ !cancelled() }}
+        run: git diff --exit-code
