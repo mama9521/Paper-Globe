@@ -23,6 +23,12 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
+      - name: Set up Chrome for browser checks
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+          install-dependencies: true
       - name: Source whitespace
         if: ${{ !cancelled() }}
         run: npm run format:check
@@ -37,12 +43,16 @@ jobs:
         run: npm test
       - name: Browser engine tests
         if: ${{ !cancelled() }}
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
         run: npm run test:browser
       - name: Production Worker build
         if: ${{ !cancelled() }}
         run: npm run build
       - name: Built Worker workflow smoke tests (local, not a deployment)
         if: ${{ !cancelled() }}
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
         run: |
           npm run start -- --local --port 4173 --ip 127.0.0.1 > /tmp/paper-globe-worker.log 2>&1 &
           SERVER=$!

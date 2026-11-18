@@ -4,22 +4,49 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+/** Cold CI launches may take longer than a local browser startup. */
+export async function waitForDevTools(child, profile, timeoutMs = 45000) {
+  let output = ''; let launchError;
+  const capture = (chunk) => { output = (output + chunk.toString()).slice(-16384); };
+  const onError = (error) => { launchError = error; };
+  child.stderr?.on('data', capture); child.stdout?.on('data', capture);
+  child.on('error', onError);
+  const failure = (reason) => new Error(`${reason}\nBrowser: ${child.spawnfile}\n${output.trim() || 'Chrome produced no startup output.'}`, launchError ? { cause: launchError } : undefined);
+  const deadline = performance.now() + timeoutMs;
+  try {
+    while (true) {
+      if (launchError) throw failure(`Chrome could not start: ${launchError.message}`);
+      if (child.exitCode !== null || child.signalCode !== null) throw failure(`Chrome exited before its debugging endpoint was ready (${child.signalCode ?? `exit code ${child.exitCode}`}).`);
+      // Chrome documents this endpoint on stderr. The profile file is a
+      // fallback for builds/wrappers that do not forward that announcement.
+      let port = Number(output.match(/DevTools listening on ws:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)\//)?.[1]);
+      if (!port) {
+        try { port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]); } catch { /* browser starting */ }
+      }
+      if (Number.isInteger(port) && port > 0 && port <= 65535) return port;
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) throw failure(`Chrome did not expose a debugging endpoint within ${timeoutMs} ms.`);
+      await delay(Math.min(100, remaining));
+    }
+  } finally {
+    child.stderr?.removeListener('data', capture); child.stdout?.removeListener('data', capture);
+    child.removeListener('error', onError);
+  }
+}
+
 /** Minimal CDP driver using Node 22 WebSocket; no unlocked browser-test dependency. */
 export async function openChrome(url) {
-  const candidates = [process.env.CHROME_BIN, 'google-chrome', 'chromium', 'chromium-browser'].filter(Boolean);
-  const binary = candidates.find((name) => spawnSync(name, ['--version'], { stdio: 'ignore' }).status === 0);
+  const candidates = process.env.CHROME_BIN ? [process.env.CHROME_BIN] : ['google-chrome', 'chromium', 'chromium-browser'];
+  const binary = candidates.find((name) => spawnSync(name, ['--version'], { stdio: 'ignore', timeout: 10000 }).status === 0);
   if (!binary) throw new Error('Chrome/Chromium not found. Set CHROME_BIN to its executable path.');
   const profile = mkdtempSync(join(tmpdir(), 'paper-globe-chrome-'));
-  const child = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-popup-blocking', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
+  const child = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-popup-blocking', '--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let socket;
   try {
-    let port;
-    for (let i = 0; i < 100; i += 1) {
-      try { port = Number(readFileSync(join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]); if (port) break; } catch { /* browser starting */ }
-      await delay(100);
-    }
-    if (!port) throw new Error('Chrome did not expose a debugging port.');
-    const target = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' })).json();
+    const port = await waitForDevTools(child, profile);
+    const response = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT', signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error(`Chrome debugging endpoint returned HTTP ${response.status}.`);
+    const target = await response.json();
     socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
     const pending = new Map(); let id = 0;

@@ -43,6 +43,8 @@ npm run build            # generates build.json and the Vinext Worker bundle
 
 Browser checks use Node's built-in WebSocket/CDP support and a local Chrome/Chromium executable, without adding a test framework dependency. Set `CHROME_BIN` when Chrome is not on PATH (for example on Windows or macOS). The self-contained browser harness performs no external requests. It tests the rendering modules, not Vite's worker bundling or the complete React application.
 
+CI installs Chrome for Testing and passes its executable path to both browser checks. The launcher allows up to 45 seconds for a cold startup, accepts the debugging endpoint from Chrome's output or its profile file, and reports startup errors with captured browser output.
+
 For full React workflow smoke tests, start the application in one terminal and run:
 
 ```bash

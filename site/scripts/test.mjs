@@ -6,8 +6,10 @@ import { spawnSync } from 'node:child_process';
 
 const root = process.cwd();
 const filter = process.argv[2] ?? '';
-const tests = readdirSync(join(root, 'tests')).filter((file) => file.endsWith('.test.ts') && file.includes(filter));
-if (!tests.length) throw new Error('No matching tests.');
+const files = readdirSync(join(root, 'tests')).filter((file) => file.includes(filter));
+const tests = files.filter((file) => file.endsWith('.test.ts'));
+const scriptTests = files.filter((file) => file.endsWith('.test.mjs'));
+if (!tests.length && !scriptTests.length) throw new Error('No matching tests.');
 const output = mkdtempSync(join(tmpdir(), 'paper-globe-tests-'));
 try {
   const program = ts.createProgram(tests.map((file) => join(root, 'tests', file)), {
@@ -23,7 +25,7 @@ try {
   } else {
     program.emit();
     writeFileSync(join(output, 'package.json'), '{"type":"commonjs"}\n');
-    const result = spawnSync(process.execPath, ['--test', ...tests.map((file) => resolve(output, 'tests', file.replace(/\.ts$/, '.js')))], { stdio: 'inherit' });
+    const result = spawnSync(process.execPath, ['--test', ...tests.map((file) => resolve(output, 'tests', file.replace(/\.ts$/, '.js'))), ...scriptTests.map((file) => join(root, 'tests', file))], { stdio: 'inherit' });
     if (result.error) throw result.error;
     process.exitCode = result.status ?? 1;
   }
