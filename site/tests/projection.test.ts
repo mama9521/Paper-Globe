@@ -3,7 +3,7 @@ import test from 'node:test';
 import { cassiniForward, cassiniInverse } from '../src/globe/cassini';
 import { angularDistance, geoToPixel, pixelToGeo } from '../src/globe/coordinates';
 import { centralMeridians, cutOutline, GLUE_TAB_OPTIONS, glueTabOutline, goreRotationDegrees, lobeOutline, type Hemisphere } from '../src/globe/geometry';
-import { createTemplateSvg, escapeXml, exportFilename, wrapText, type SvgOptions } from '../src/globe/export';
+import { createTemplateSvg, DEFAULT_FOLD_COLOR, escapeXml, exportFilename, GLUE_TAB_FILL, wrapText, type SvgOptions } from '../src/globe/export';
 import { exportSize, maximumDiameter, paperLayout, PAPER, type PaperSize } from '../src/globe/paper';
 import { detectSourceContentBounds, sourceProjectionLimits, sourceProjectionToPixel } from '../src/globe/source-projection';
 
@@ -74,12 +74,28 @@ void test('diameter drives physical lengths, pages stay exact, and oversize is r
     paperLayout(maximumDiameter(size), size);
     for (const count of [4, 6, 8, 12]) for (const hemisphere of ['north', 'south'] as Hemisphere[]) {
       const svg = createTemplateSvg({ ...options, diameter: 2, paperSize: size, goreCount: count, hemisphere });
-      assert.match(svg, new RegExp(`width="${PAPER[size].widthMm}mm"`)); assert.match(svg, /h 25\.4/);
+      assert.match(svg, new RegExp(`width="${PAPER[size].widthMm}mm"`)); assert.doesNotMatch(svg, /data-layer="scale-check"/);
       assert.notEqual(svg, createTemplateSvg({ ...options, diameter: 3, paperSize: size, goreCount: count, hemisphere }));
     }
   }
   for (const value of [NaN, Infinity, 0, -3]) assert.throws(() => paperLayout(value, 'letter'));
   close(paperLayout(4, 'tabloid').radiusMm / paperLayout(2, 'tabloid').radiusMm, 2);
+});
+void test('screen-only scale and assembly instructions are absent from the export scene', () => {
+  const preview = createTemplateSvg({ ...options, showPreviewNotes: true });
+  const exported = createTemplateSvg(options);
+  assert.match(preview, /Target diameter:.*Print at 100%/);
+  assert.match(preview, /data-layer="scale-check"[^>]+h 25\.4/);
+  assert.match(preview, /Cut green solid · Fold along the dashed guides/);
+  assert.doesNotMatch(exported, /preview-notes|Target diameter:|Scale check:|Cut green solid/);
+});
+void test('gray tabs and custom fold colors remain independent from the cut outline', () => {
+  const svg = createTemplateSvg({ ...options, foldColor: '#006daa', dashedCutLines: true });
+  assert.match(svg, new RegExp(`data-layer="tab-fill"[^>]+fill="${GLUE_TAB_FILL}"`));
+  assert.match(svg, /data-layer="cut"[^>]+stroke="#173f3a"[^>]+stroke-dasharray/);
+  assert.match(svg, /data-layer="fold"[^>]+stroke-dasharray[\s\S]+?stroke="#006daa"/);
+  assert.match(svg, /data-layer="tab-fold"[^>]+stroke-dasharray[\s\S]+?stroke="#006daa"/);
+  assert.match(createTemplateSvg({ ...options, foldColor: 'invalid' }), new RegExp(`stroke="${DEFAULT_FOLD_COLOR}"`));
 });
 void test('print resolution is independent from the 720-pixel preview and bounded (#10)', () => {
   assert.ok(exportSize(3.5, 'letter') > 720);

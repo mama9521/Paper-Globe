@@ -4,12 +4,15 @@ import { abortError, throwIfAborted } from './lifecycle';
 import { templateExportName } from './export-name';
 import type { PixelImage } from './raster';
 
-export type TemplateMarks = { cutLines: boolean; dashedCutLines: boolean; foldLines: boolean; tabs: boolean; tabShape?: GlueTabShape };
+export const GLUE_TAB_FILL = '#c5c7c6';
+export const DEFAULT_FOLD_COLOR = '#a12d44';
+
+export type TemplateMarks = { cutLines: boolean; dashedCutLines: boolean; foldLines: boolean; foldColor?: string; tabs: boolean; tabShape?: GlueTabShape };
 export type LogoSettings = { dataUrl: string; position: 'north-pole' | 'south-pole' | 'equator'; scale: number };
 export type TemplateAnnotations = { description?: string; legend?: string };
 export type SvgOptions = TemplateMarks & {
   raster?: string; goreCount: number; hemisphere: Hemisphere; diameter: number;
-  paperSize: PaperSize; logo?: LogoSettings; annotations?: TemplateAnnotations;
+  paperSize: PaperSize; showPreviewNotes?: boolean; logo?: LogoSettings; annotations?: TemplateAnnotations;
 };
 export function escapeXml(value: string) {
   return value.replace(/[<>&'"]/g, (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[character] ?? character);
@@ -36,7 +39,7 @@ export function wrapText(value: string, width: number, limit = 6) {
 }
 /** The one physical scene used by screen preview, downloaded SVG, and both print pages. */
 export function createTemplateSvg(options: SvgOptions) {
-  const { goreCount, hemisphere, diameter, paperSize, raster, logo, annotations, ...marks } = options;
+  const { goreCount, hemisphere, diameter, paperSize, raster, logo, annotations, showPreviewNotes = false, ...marks } = options;
   const layout = paperLayout(diameter, paperSize);
   const { widthMm: width, heightMm: height, radiusMm: radius, artMm: art } = layout;
   if (hemisphere !== 'north' && hemisphere !== 'south') throw new Error('Invalid hemisphere.');
@@ -46,11 +49,16 @@ export function createTemplateSvg(options: SvgOptions) {
   const outline = pointsToSvgPath(cutOutline(goreCount, hemisphere, radius, marks.tabs, marks.tabShape));
   const tab = glueTabOutline(goreCount, radius, marks.tabShape);
   const dash = marks.dashedCutLines ? ' stroke-dasharray="1.6 1.1"' : '';
+  const foldColor = marks.foldColor && /^#[\da-f]{6}$/i.test(marks.foldColor) ? marks.foldColor : DEFAULT_FOLD_COLOR;
+  const foldPath = (layer: string, path: string) => `<g data-layer="${layer}" fill="none" stroke-dasharray="1.4 1">
+    <path d="${path}" stroke="#fffdf8" stroke-width="0.65"/>
+    <path d="${path}" stroke="${foldColor}" stroke-width="0.32"/>
+  </g>`;
   const overlay = centralMeridians(goreCount).map((_, index) => `<g transform="translate(${center} ${center}) rotate(${goreRotationDegrees(goreCount, hemisphere, index)})">
-    ${marks.tabs ? `<path data-layer="tab-fill" d="${pointsToSvgPath(tab)}" fill="#fffaf0" stroke="none"/>` : ''}
+    ${marks.tabs ? `<path data-layer="tab-fill" d="${pointsToSvgPath(tab)}" fill="${GLUE_TAB_FILL}" stroke="none"/>` : ''}
     ${marks.cutLines ? `<path data-layer="cut" d="${outline}" fill="none" stroke="#173f3a" stroke-width="0.25"${dash}/>` : ''}
-    ${marks.foldLines ? `<path data-layer="fold" d="M 0 0.6 L 0 ${radius - 0.6}" fill="none" stroke="#b04a3c" stroke-width="0.18" stroke-dasharray="1.2 1"/>` : ''}
-    ${marks.foldLines && marks.tabs ? `<path data-layer="tab-fold" d="${pointsToSvgPath(tab.slice(0, 2), false)}" fill="none" stroke="#b04a3c" stroke-width="0.18" stroke-dasharray="1.2 1"/>` : ''}
+    ${marks.foldLines ? foldPath('fold', `M 0 0.6 L 0 ${radius - 0.6}`) : ''}
+    ${marks.foldLines && marks.tabs ? foldPath('tab-fold', pointsToSvgPath(tab.slice(0, 2), false)) : ''}
   </g>`).join('');
   const visible = logo && (logo.position === 'equator' || logo.position === `${hemisphere}-pole`);
   const logoSize = logo ? art * 0.075 * logo.scale : 0;
@@ -69,10 +77,10 @@ export function createTemplateSvg(options: SvgOptions) {
   const name = hemisphere === 'north' ? 'Northern' : 'Southern';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}mm" height="${height}mm" viewBox="0 0 ${width} ${height}" font-family="Arial, sans-serif" fill="#173f3a">
-  <title>${name} hemisphere, ${goreCount} gores, ${diameter} inch diameter</title>
+  <title>${name} hemisphere, ${goreCount} map pieces, ${diameter} inch diameter</title>
   <rect width="${width}" height="${height}" fill="#fffdf8"/>
   <text x="12" y="18" font-size="5" font-weight="bold">PAPER GLOBE</text>
-  <text x="12" y="25" font-size="2.8">${name} hemisphere · Sheet ${hemisphere === 'north' ? 1 : 2} of 2 · ${goreCount} gores</text>
+  <text x="12" y="25" font-size="2.8">${name} hemisphere · Sheet ${hemisphere === 'north' ? 1 : 2} of 2 · ${goreCount} map pieces</text>
   <text x="${width - 12}" y="18" text-anchor="end" font-size="2.8">${layout.label}</text>
   <g data-layer="art" transform="translate(${layout.x} ${layout.y})">
     ${raster ? `<image data-layer="raster" href="${png(raster)}" width="${art}" height="${art}"/>` : ''}
@@ -81,10 +89,12 @@ export function createTemplateSvg(options: SvgOptions) {
     ${visible ? `<image data-layer="logo" href="${png(logo.dataUrl)}" x="${center - logoSize / 2}" y="${logoY}" width="${logoSize}" height="${logoSize}" preserveAspectRatio="xMidYMid meet"/>` : ''}
   </g>
   ${notes}
+  ${showPreviewNotes ? `<g data-layer="preview-notes">
   <text x="12" y="${height - 26}" font-size="2.7">Target diameter: ${diameter} in · Print at 100% / actual size. Disable fit-to-page.</text>
   <path data-layer="scale-check" d="M 12 ${height - 20} v 3 m 0 -1.5 h 25.4 m 0 -1.5 v 3" fill="none" stroke="#173f3a" stroke-width="0.25"/>
   <text x="40" y="${height - 18}" font-size="2.5">Scale check: exactly 1 in / 25.4 mm</text>
-  <text x="12" y="${height - 12}" font-size="2.4">Cut ${marks.cutLines ? (marks.dashedCutLines ? 'green dashed' : 'green solid') : 'marks hidden'} · Fold ${marks.foldLines ? 'red dashed' : 'marks hidden'} · Generated locally</text>
+  <text x="12" y="${height - 12}" font-size="2.4">Cut ${marks.cutLines ? (marks.dashedCutLines ? 'green dashed' : 'green solid') : 'marks hidden'} · Fold ${marks.foldLines ? 'along the dashed guides' : 'marks hidden'}</text>
+  </g>` : ''}
 </svg>`;
 }
 export function exportFilename(options: Pick<SvgOptions, 'hemisphere' | 'goreCount' | 'diameter' | 'paperSize'> & { sourceName?: string }) {
@@ -117,10 +127,26 @@ export function downloadSvg(svg: string, filename: string) {
 }
 export function openPrintSession(paperSize: PaperSize, title = 'Paper Globe — Print') {
   const popup = window.open('', '_blank');
-  if (!popup) throw new Error('Allow pop-ups for Paper Globe, then choose Print / PDF again.');
+  if (!popup) throw new Error('Allow pop-ups for Paper Globe, then choose Print PDF again.');
+  // Finish the new document explicitly so print() is not deferred behind an
+  // unfinished about:blank navigation or document load.
+  popup.document.open();
+  // oxlint-disable-next-line typescript/no-deprecated -- Only a fixed skeleton is written to this isolated, new print document.
+  popup.document.write('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>');
+  popup.document.close();
   // Browsers suggest the document title as the Save as PDF filename.
   popup.document.title = title;
-  popup.document.body.textContent = 'Preparing both templates locally…';
+  const paper = PAPER[paperSize];
+  const style = popup.document.createElement('style');
+  style.textContent = `body{margin:0;background:#ddd;font-family:Arial,sans-serif}.print-controls{padding:16px;text-align:center;background:white}.print-controls p{margin:0 0 12px}.print-controls button{padding:8px 16px;font:inherit}.sheet{width:${paper.widthMm}mm;height:${paper.heightMm}mm;margin:12px auto}.sheet img{display:block;width:100%;height:100%}@media print{@page{size:${paper.widthMm}mm ${paper.heightMm}mm;margin:0}body{background:white}.print-controls{display:none}.sheet{margin:0;break-after:page}.sheet:last-child{break-after:auto}}`;
+  popup.document.head.append(style);
+  const controls = popup.document.createElement('header'); controls.className = 'print-controls';
+  const status = popup.document.createElement('p'); status.setAttribute('role', 'status');
+  status.textContent = 'Preparing both templates locally… 0%';
+  const button = popup.document.createElement('button'); button.type = 'button'; button.textContent = 'Print / Save as PDF'; button.disabled = true;
+  controls.append(status, button);
+  const sheets = popup.document.createElement('main');
+  popup.document.body.append(controls, sheets);
   const urls: string[] = [];
   let interval: ReturnType<typeof setInterval> | undefined;
   const cleanup = () => {
@@ -128,24 +154,27 @@ export function openPrintSession(paperSize: PaperSize, title = 'Paper Globe — 
     if (interval !== undefined) { clearInterval(interval); interval = undefined; }
     window.removeEventListener('pagehide', cleanup);
     popup.removeEventListener('pagehide', cleanup);
-    popup.removeEventListener('afterprint', cleanup);
   };
   window.addEventListener('pagehide', cleanup, { once: true });
   popup.addEventListener('pagehide', cleanup, { once: true });
-  popup.addEventListener('afterprint', cleanup, { once: true });
   interval = setInterval(() => { if (popup.closed) cleanup(); }, 500);
   const close = () => { cleanup(); if (!popup.closed) popup.close(); };
+  const requestPrint = () => {
+    try { popup.focus(); popup.print(); }
+    catch { status.textContent = 'Both sheets are ready. Use Print / Save as PDF to open the print dialog.'; }
+  };
+  button.addEventListener('click', requestPrint);
   return {
     close,
+    setProgress(fraction: number) {
+      if (!popup.closed) status.textContent = `Preparing both templates locally… ${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
+    },
     async print(svgs: string[], signal?: AbortSignal) {
       if (svgs.length !== 2) throw new Error('Printing requires north and south templates.');
       throwIfAborted(signal);
       if (popup.closed) throw abortError();
-      const paper = PAPER[paperSize];
-      const style = popup.document.createElement('style');
-      style.textContent = `body{margin:0;background:#ddd}.sheet{width:${paper.widthMm}mm;height:${paper.heightMm}mm;margin:12px auto}.sheet img{display:block;width:100%;height:100%}@media print{@page{size:${paper.widthMm}mm ${paper.heightMm}mm;margin:0}body{background:white}.sheet{margin:0;break-after:page}.sheet:last-child{break-after:auto}}`;
-      popup.document.head.append(style); popup.document.body.replaceChildren();
       try {
+        status.textContent = 'Loading both print sheets…';
         await Promise.all(svgs.map((svg, index) => new Promise<void>((resolve, reject) => {
           const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); urls.push(url);
           const sheet = popup.document.createElement('div'); sheet.className = 'sheet';
@@ -156,10 +185,12 @@ export function openPrintSession(paperSize: PaperSize, title = 'Paper Globe — 
           signal?.addEventListener('abort', abort, { once: true });
           image.onload = () => image.naturalWidth ? finish() : finish(new Error('A print image is empty.'));
           image.onerror = () => finish(new Error('A print image failed to load. Try downloading SVG instead.'));
-          sheet.append(image); popup.document.body.append(sheet); image.src = url;
+          sheet.append(image); sheets.append(sheet); image.src = url;
         })));
         throwIfAborted(signal); if (popup.closed) throw abortError();
-        popup.focus(); popup.print();
+        status.textContent = 'Both sheets are ready. Choose Actual size or 100% and turn off Fit to page. If the dialog does not open, use Print / Save as PDF.';
+        button.disabled = false;
+        requestPrint();
       } catch (error) { close(); throw error; }
     },
   };

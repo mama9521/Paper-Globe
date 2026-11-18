@@ -10,7 +10,7 @@ export async function openChrome(url) {
   const binary = candidates.find((name) => spawnSync(name, ['--version'], { stdio: 'ignore' }).status === 0);
   if (!binary) throw new Error('Chrome/Chromium not found. Set CHROME_BIN to its executable path.');
   const profile = mkdtempSync(join(tmpdir(), 'paper-globe-chrome-'));
-  const child = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-popup-blocking', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
+  const child = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-popup-blocking', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
   let socket;
   try {
     let port;

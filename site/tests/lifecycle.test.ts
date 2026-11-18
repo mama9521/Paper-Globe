@@ -34,3 +34,24 @@ void test('scheduler reports progress and aborts between slices (#8, #10)', asyn
   const fractions: number[] = []; function* success(): Generator<number, number> { yield 0.5; return 42; }
   assert.equal(await runCooperatively(success(), undefined, (value) => fractions.push(value)), 42); assert.equal(fractions.at(-1), 1);
 });
+void test('background rendering yields without depending on throttled timers', async () => {
+  const original = globalThis.setTimeout;
+  let timerYields = 0; let messageRan = false;
+  const channel = new MessageChannel();
+  channel.port1.onmessage = () => { messageRan = true; };
+  globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => { timerYields += 1; return original(...args); }) as typeof setTimeout;
+  function* steps(): Generator<number, number> {
+    for (let i = 0; i < 3; i += 1) {
+      const deadline = performance.now() + 10;
+      while (performance.now() < deadline) { /* force another cooperative slice */ }
+      yield i / 3;
+    }
+    return 42;
+  }
+  try {
+    channel.port2.postMessage(null);
+    assert.equal(await runCooperatively(steps()), 42);
+    assert.equal(timerYields, 0, 'Render slices depend on background-clamped timers');
+    assert.ok(messageRan, 'Rendering did not yield to other browser tasks');
+  } finally { globalThis.setTimeout = original; channel.port1.close(); channel.port2.close(); }
+});

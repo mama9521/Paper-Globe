@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { RenderClient } from '../src/globe/render-client';
 import { LatestResource, isAbort, throwIfAborted } from '../src/globe/lifecycle';
 import { loadLogo, loadMap, type LogoResource, type MapResource } from '../src/globe/input';
-import { createTemplateSvg, downloadSvg, exportFilename, openPrintSession, rasterDataUrl, type LogoSettings, type SvgOptions, type TemplateMarks } from '../src/globe/export';
+import { createTemplateSvg, DEFAULT_FOLD_COLOR, downloadSvg, exportFilename, openPrintSession, rasterDataUrl, type LogoSettings, type SvgOptions, type TemplateMarks } from '../src/globe/export';
 import { templateExportName } from '../src/globe/export-name';
 import { exportSize, maximumDiameter, paperLayout, PREVIEW_SIZE, type PaperSize } from '../src/globe/paper';
 import type { SourceProjection } from '../src/globe/source-projection';
@@ -19,8 +19,8 @@ export type Settings = {
 };
 export const DEFAULT_SETTINGS: Settings = {
   sourceProjection: 'equirectangular', goreCount: 6, hemisphere: 'north', diameter: 3.5, paperSize: 'letter',
-  marks: { cutLines: true, dashedCutLines: false, foldLines: true, tabs: true, tabShape: 'trapezoid' },
-  descriptionEnabled: false, description: '', legendEnabled: false, legend: '', logoPosition: 'south-pole', logoScale: 1,
+  marks: { cutLines: true, dashedCutLines: false, foldLines: true, foldColor: DEFAULT_FOLD_COLOR, tabs: true, tabShape: 'trapezoid' },
+  descriptionEnabled: false, description: '', legendEnabled: false, legend: '', logoPosition: 'equator', logoScale: 1,
 };
 type ExportOperation = { controller: AbortController; print?: ReturnType<typeof openPrintSession> };
 type Notice = { kind: 'error' | 'success' | 'info'; text: string };
@@ -87,7 +87,7 @@ export function useWorkshop() {
     logo: logo ? { dataUrl: logo.dataUrl, position: settings.logoPosition, scale: settings.logoScale } : undefined,
   };
   // A mismatched raster is never paired with new geometry or exported under new labels.
-  const previewSvg = fitError ? undefined : createTemplateSvg({ ...spec, raster: ready ? render?.raster : undefined });
+  const previewSvg = fitError ? undefined : createTemplateSvg({ ...spec, showPreviewNotes: true, raster: ready ? render?.raster : undefined });
   const update = (patch: Partial<Settings>) => {
     setNotice(undefined);
     setSettings((previous) => ({ ...previous, ...patch }));
@@ -110,10 +110,31 @@ export function useWorkshop() {
     if (!result || !mounted.current) return;
     setLogoLoading(false);
     if ('error' in result) setNotice({ kind: 'error', text: errorText(result.error) });
-    else { setLogo(result.value); setNotice({ kind: 'success', text: 'Logo added locally. Only reproduce marks you are authorized to use.' }); }
+    else {
+      setLogo(result.value);
+      setMode('template');
+      setSettings((current) => {
+        const { logoPosition } = current;
+        if (logoPosition === 'equator') return current;
+        return { ...current, hemisphere: logoPosition === 'north-pole' ? 'north' : 'south' };
+      });
+      setNotice({ kind: 'success', text: 'Logo added to the template.' });
+    }
   };
   const removeLogo = () => { logoLoader.clear(); setLogo(undefined); setLogoLoading(false); setNotice({ kind: 'info', text: 'Logo removed.' }); };
-  const resetView = () => { setMode('template'); update({ hemisphere: 'north' }); setNotice({ kind: 'info', text: 'View reset to the northern template. Your map, logo, and settings are unchanged.' }); };
+  const setLogoPosition = (logoPosition: LogoSettings['position']) => {
+    setMode('template');
+    update(logoPosition === 'equator' ? { logoPosition } : {
+      logoPosition,
+      hemisphere: logoPosition === 'north-pole' ? 'north' : 'south',
+    });
+  };
+  const resetSettings = () => {
+    setMode('template');
+    setSettings((current) => ({ ...DEFAULT_SETTINGS, sourceProjection: current.sourceProjection }));
+    setRetry((value) => value + 1);
+    setNotice({ kind: 'info', text: 'Template settings reset. Your map and logo are still loaded.' });
+  };
   const cancel = () => {
     if (operation.current) { operation.current.controller.abort(); operation.current.print?.close(); }
     else { previewAbort.current?.abort(); client.current?.cancel(); setRender({ key: renderKey, phase: 'cancelled', progress: 0 }); }
@@ -134,7 +155,10 @@ export function useWorkshop() {
       const svgs: string[] = [];
       for (const [index, target] of hemispheres.entries()) {
         const image = await renderer.render({ size: exportSize(settings.diameter, settings.paperSize), goreCount, hemisphere: target, sourceProjection }, job.controller.signal, (fraction) => {
-          if (!job.controller.signal.aborted) setExportProgress((index + fraction) / hemispheres.length);
+          if (!job.controller.signal.aborted) {
+            const progress = (index + fraction) / hemispheres.length;
+            setExportProgress(progress); job.print?.setProgress(progress);
+          }
         });
         const raster = await rasterDataUrl(image, job.controller.signal);
         throwIfAborted(job.controller.signal);
@@ -143,7 +167,7 @@ export function useWorkshop() {
       throwIfAborted(job.controller.signal);
       if (job.print) await job.print.print(svgs, job.controller.signal);
       else downloadSvg(svgs[0], exportFilename({ ...spec, sourceName: source.name }));
-      if (mounted.current) setNotice({ kind: 'success', text: kind === 'print' ? 'Both sheets are ready. Print at 100% / actual size and measure the 1-inch scale check.' : `${hemisphere === 'north' ? 'Northern' : 'Southern'} SVG downloaded at print resolution.` });
+      if (mounted.current) setNotice({ kind: 'success', text: kind === 'print' ? 'Both sheets are ready. Choose Actual size or 100% and turn off Fit to page.' : `${hemisphere === 'north' ? 'Northern' : 'Southern'} SVG downloaded at print resolution.` });
     } catch (error) {
       job.print?.close();
       if (mounted.current && !isAbort(error)) setNotice({ kind: 'error', text: errorText(error) });
@@ -154,7 +178,7 @@ export function useWorkshop() {
   };
   return {
     settings, update, setMark, mode, setMode, source, logo, notice, loading, logoLoading,
-    chooseMap, chooseLogo, removeLogo, resetView, cancel, exportTemplates,
+    chooseMap, chooseLogo, removeLogo, setLogoPosition, resetSettings, cancel, exportTemplates,
     retry: () => { setNotice(undefined); setRetry((value) => value + 1); }, render, ready, isRendering,
     exporting, exportProgress, previewSvg, fitError, maximumDiameter: maximumDiameter(settings.paperSize),
     canExport: ready && !loading && !logoLoading && !fitError && !exporting,

@@ -35,6 +35,14 @@ export class LatestResource<T> {
 /** Cooperative fallback and worker scheduler; each row is a cancellable unit. */
 export async function runCooperatively<T>(iterator: Generator<number, T>, signal?: AbortSignal, progress?: (fraction: number) => void): Promise<T> {
   let lastReport = 0;
+  // Opening the print tab backgrounds the renderer. Timer clamping can turn
+  // every 8 ms slice into a second of waiting; message tasks still yield to
+  // input/cancellation without relying on background timers.
+  const channel = new MessageChannel();
+  const yieldTask = () => new Promise<void>((resolve) => {
+    channel.port1.onmessage = () => resolve();
+    channel.port2.postMessage(null);
+  });
   try {
     while (true) {
       throwIfAborted(signal);
@@ -45,9 +53,10 @@ export async function runCooperatively<T>(iterator: Generator<number, T>, signal
         if (step.done) { progress?.(1); return step.value; }
         if (performance.now() - lastReport > 100) { progress?.(step.value); lastReport = performance.now(); }
       } while (performance.now() < deadline);
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await yieldTask();
     }
   } finally {
+    channel.port1.close(); channel.port2.close();
     iterator.return(undefined as T);
   }
 }

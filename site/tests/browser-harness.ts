@@ -67,7 +67,9 @@ async function main() {
       assert(ticks > 0, 'Fallback blocked all timer events');
     });
     await check('rendered SVG has physical dimensions, parses, and pole logo is unobscured', async () => {
-      const raster = await rasterDataUrl(await worker.render(request)); const logo = await loadLogo(await file());
+      const raster = await rasterDataUrl(await worker.render(request));
+      context.fillStyle = '#006bff'; context.fillRect(0, 0, 128, 64);
+      const logo = await loadLogo(await file());
       const svg = createTemplateSvg({ raster, diameter: 3.5, paperSize: 'letter', goreCount: 6, hemisphere: 'north', cutLines: true, dashedCutLines: false, foldLines: true, tabs: true, logo: { ...logo, scale: 0.5, position: 'north-pole' } });
       const xml = new DOMParser().parseFromString(svg, 'image/svg+xml'); assert(!xml.querySelector('parsererror'), 'Invalid XML'); assert(xml.documentElement.getAttribute('width') === '215.9mm', 'Wrong physical width');
       const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); const image = new Image();
@@ -76,27 +78,62 @@ async function main() {
         const target = document.createElement('canvas'); target.width = 816; target.height = 1056;
         const ctx = target.getContext('2d')!; ctx.drawImage(image, 0, 0, 816, 1056);
         const layout = paperLayout(3.5, 'letter'); const pixel = ctx.getImageData(408, Math.floor((layout.y + layout.artMm / 2) * 1056 / layout.heightMm), 1, 1).data;
-        assert(pixel[0] === 255 && pixel[1] === 0 && pixel[2] === 0, `Logo center obscured: ${pixel.join(',')}`);
+        assert(pixel[0] === 0 && pixel[1] === 107 && pixel[2] === 255, `Logo center obscured: ${pixel.join(',')}`);
         image.id = 'sample-template'; image.style.width = '600px'; document.body.append(image);
       } finally { URL.revokeObjectURL(url); }
     });
     await check('print opens two decoded images', async () => {
-      const original = window.open.bind(window); let popup: Window | null = null; let printed = false;
-      window.open = (url, target, features) => { popup = original(url, target, features); if (popup) popup.print = () => { printed = true; }; return popup; };
+      const original = window.open.bind(window); let popup: Window | null = null; let printCount = 0;
+      window.open = (url, target, features) => { popup = original(url, target, features); if (popup) popup.print = () => { printCount += 1; }; return popup; };
       try {
         const session = openPrintSession('a4');
+        const opened = popup as Window | null;
+        assert(opened && opened.document.querySelector('button')?.disabled, 'Printing enabled before sheets are ready');
+        session.setProgress(0.25);
+        assert(opened.document.querySelector('[role="status"]')?.textContent?.includes('25%'), 'Print progress is missing');
         const raster = await rasterDataUrl(await worker.render(request));
         const svgs = (['north', 'south'] as const).map((hemisphere) => createTemplateSvg({ raster, diameter: 3.5, paperSize: 'a4', goreCount: 6, hemisphere, cutLines: true, dashedCutLines: false, foldLines: true, tabs: true }));
-        await session.print(svgs); assert(printed, 'Print not requested');
-        const opened = popup as Window | null;
+        await session.print(svgs); assert(printCount === 1, 'Print not requested');
+        assert(opened.document.readyState === 'complete', 'Print document has not finished loading');
         assert(opened && opened.document.images.length === 2, 'Not exactly two print images');
-        assert([...opened.document.images].every((image) => image.complete && image.naturalWidth > 0), 'Print before image decode'); session.close();
+        assert([...opened.document.images].every((image) => image.complete && image.naturalWidth > 0), 'Print before image decode');
+        opened.dispatchEvent(new Event('afterprint'));
+        for (const image of opened.document.images) assert((await fetch(image.src)).ok, 'Print assets released before a retry');
+        opened.document.querySelector('button')!.click();
+        assert(Number(printCount) === 2, 'Manual print retry did not request printing');
+        session.close();
       } finally { window.open = original; }
     });
     await check('blocked popup provides a recoverable error', async () => {
       const original = window.open; window.open = () => null;
       try { let message = ''; try { openPrintSession('letter'); } catch (error) { message = String(error); } assert(/Allow pop-ups/.test(message), 'Missing popup recovery instruction'); }
       finally { window.open = original; }
+    });
+    await check('native print starts and a denied automatic print can be retried', async () => {
+      const original = window.open.bind(window); let popup: Window | null = null;
+      window.open = (url, target, features) => {
+        popup = original(url, target, features);
+        if (popup) {
+          const nativePrint = popup.print.bind(popup);
+          popup.print = () => { popup!.print = nativePrint; throw new Error('User gesture required'); };
+        }
+        return popup;
+      };
+      let session: ReturnType<typeof openPrintSession> | undefined;
+      try {
+        session = openPrintSession('letter');
+        const svgs = (['north', 'south'] as const).map((hemisphere) => createTemplateSvg({ diameter: 3.5, paperSize: 'letter', goreCount: 6, hemisphere, cutLines: true, dashedCutLines: false, foldLines: true, tabs: true }));
+        await session.print(svgs);
+        const opened = popup as Window | null;
+        assert(opened && !opened.closed, 'A denied automatic print discarded the ready sheets');
+        assert(opened.document.querySelector('[role="status"]')?.textContent?.includes('Use Print / Save as PDF'), 'Missing manual print recovery');
+        const started = new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Native print did not start')), 5000);
+          opened.addEventListener('beforeprint', () => { clearTimeout(timer); resolve(); }, { once: true });
+        });
+        opened.document.querySelector('button')!.click();
+        await started;
+      } finally { session?.close(); window.open = original; }
     });
     await check('representative bounded 4096×2048 source benchmark', async () => {
       const pixels = new Uint8ClampedArray(4096 * 2048 * 4).fill(255);

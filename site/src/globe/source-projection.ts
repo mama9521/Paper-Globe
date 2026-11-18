@@ -50,7 +50,7 @@ const PROJECTIONS: Record<SourceProjection, ProjectionDefinition> = {
     forward: (x, y) => ({ x, y }), trimUniformBackground: false,
   },
   'natural-earth': {
-    label: 'Natural Earth', hint: 'Fits the rounded world footprint and ignores a uniform background around it.',
+    label: 'Natural Earth', hint: 'Uses the rounded world outline.',
     bounds: { minX: -naturalEarthEast, maxX: naturalEarthEast, minY: -naturalEarthNorth, maxY: naturalEarthNorth },
     forward: naturalEarthForward, trimUniformBackground: true,
   },
@@ -60,7 +60,7 @@ const PROJECTIONS: Record<SourceProjection, ProjectionDefinition> = {
     forward: robinsonForward, trimUniformBackground: true,
   },
   'web-mercator': {
-    label: 'Web Mercator', hint: 'Uses the usual square world extent. The missing polar caps remain transparent.',
+    label: 'Web Mercator', hint: 'Square world extent.',
     bounds: { minX: -Math.PI, maxX: Math.PI, minY: -Math.PI, maxY: Math.PI },
     forward: webMercatorForward, trimUniformBackground: false,
   },
